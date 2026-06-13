@@ -18,6 +18,8 @@ class SentenceBlock:
         language: 该句语言标签（zh / en / ja / mixed）
         tier: 来源 tier 名称（tier1_llm / tier2_semantic / tier3_rule）
         confidence: 置信度 0-1
+        is_topic_boundary: 是否为主题边界标记（v0.2 TextTiling 用）
+        topic_depth_score: 主题边界深度评分（仅 is_topic_boundary=True 时有值）
     """
 
     text: str
@@ -29,6 +31,8 @@ class SentenceBlock:
     language: str = "zh"
     tier: str = "tier3_rule"
     confidence: float = 1.0
+    is_topic_boundary: bool = False
+    topic_depth_score: float = 0.0
 
     def __post_init__(self):
         if not self.text:

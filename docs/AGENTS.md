@@ -130,21 +130,17 @@ python -c "from splitter import SmartSentenceSplitter; print('OK')"
 - [ ] 新增功能有对应测试
 - [ ] 现有测试未被破坏
 
-## 🎯 当前迭代重点
+### 🎯 当前迭代重点
 
-### v0.1 (✅ 完成)
-- 规则分句器 + 场景分割 + 字幕分割
-- 多语言基础 (zh/en)
-- 时代检测集成
-- CLI 入口
-- 101 个测试用例
-
-### v0.2 (下一步)
+### v0.2 (✅ 完成)
 - TextTiling 主题分割算法（Tier 2 升级）
-- 性能优化（jieba 懒加载）
-- 英文缩写词表扩充
+- AC 自动机 + Customization 用户词典（LAC 复用）
+- EOS 标点窗口检测（HanLP 复用）
+- 后处理器统一接口（THULAC 复用）
+- 大文本兜底 + mode 切换
+- 155 个测试用例
 
-### v0.3 (计划)
+### v0.3 (下一步)
 - LLM Tier 接口 + OpenAI 适配
 - Tier 1 降级逻辑
 

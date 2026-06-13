@@ -14,8 +14,10 @@ import yaml
 # 默认配置（与 config/splitter.yaml 同步）
 DEFAULT_CONFIG: Dict[str, Any] = {
     "language": "auto",
+    "mode": "balanced",
     "enable_era": False,
     "enable_llm": False,
+    "enable_topic_segmentation": False,
     "min_tier": 2,
     "sentence_tokenizer": {
         "language": "auto",
@@ -67,6 +69,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "base_url": None,
         "timeout": 30,
         "max_retries": 2,
+    },
+    "texttiling": {
+        "min_text_length": 100,
+        "window_size": 20,
+        "depth_score_threshold": 0.3,
+        "min_tokens_for_boundary": 20,
     },
 }
 

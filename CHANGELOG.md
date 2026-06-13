@@ -1,5 +1,40 @@
 # PROJECT-012 CHANGELOG
 
+## [0.2.0] - 2026-06-13
+
+### ✨ v0.2 核心升级 — TextTiling 主题分割 + 4 项竞品复用
+
+#### TextTiling 主题分割
+- **TextTiling 算法实现** — 滑动窗口 + 余弦相似度 + 深度评分 + 边界识别
+- **TextTilingSemanticSplitter** — 作为 Tier 2A 注册到 pipeline
+- **ChineseSplitter EOS 窗口检测** — 对标点前后 5 字符做上下文分析（HanLP EOS 思路）
+- **配置启用** — `enable_topic_segmentation: false`（默认关闭，向后兼容）
+- 新文件: `src/splitter/texttiling/` (3 个文件 + 测试)
+
+#### 复用 #1：AC 自动机 + Customization（来自 LAC）
+- **Aho-Corasick 多模式匹配** — 纯 Python，O(n) 匹配
+- **Customization 类** — `add_word()` / `load_customization()` / `adjust()` 完整接口
+- 新文件: `src/splitter/languages/zh/ac.py` + `custom.py`
+
+#### 复用 #2：EOS 标点窗口检测（来自 HanLP）
+- ChineseSplitter 重构：`_find_eos_positions()` 窗口检测 + 复句连接词上下文分析
+
+#### 复用 #3：后处理器统一接口（来自 THULAC）
+- `BasePostprocessor` 抽象基类 + `PostprocessorChain` + `CustomMergingProcessor`
+- 新文件: `src/splitter/postprocessor.py`
+
+#### 复用 #4：大文本兜底（来自 THULAC __cutRaw）
+- pipeline `split()` 增加 `max_input_length` 超限自动分块递归处理
+
+#### 复用 #5：mode 切换（来自 LAC 3 mode）
+- 配置 `mode: "fast" | "balanced" | "precise"` — 对应 min_tier=3/2/1
+
+#### 📊 测试
+- 新增: **54 个测试用例**
+- **总计: 155 个测试用例 100% 通过 ✅**
+
+---
+
 ## [0.1.0] - 2026-06-13
 
 ### 🎉 首发版本 (Initial Release)

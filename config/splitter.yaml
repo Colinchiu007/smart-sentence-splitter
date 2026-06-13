@@ -3,8 +3,10 @@
 
 # ============ 全局 ============
 language: "auto"  # auto | zh | en | ja | mixed
+mode: "balanced"  # fast(rule-only) | balanced(语义+规则) | precise(含LLM+主题)
 enable_era: false  # 是否启用时代检测
 enable_llm: false  # 是否启用 LLM tier
+enable_topic_segmentation: false  # 是否启用 TextTiling 主题分割（v0.2 新增）
 min_tier: 2        # 最低允许的 tier: 1=LLM, 2=Semantic, 3=Rule
 
 # ============ 多语言分句 ============
@@ -76,3 +78,10 @@ llm:
   base_url: null
   timeout: 30
   max_retries: 2
+
+# ============ TextTiling 主题分割（v0.2）============
+texttiling:
+  min_text_length: 100       # 短于此长度的文本不走 TextTiling
+  window_size: 20             # 滑动窗口大小（词数）
+  depth_score_threshold: 0.3  # 边界深度评分阈值
+  min_tokens_for_boundary: 20 # 识别的边界至少相隔这么多 token
