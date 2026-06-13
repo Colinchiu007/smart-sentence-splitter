@@ -1,0 +1,79 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart-sentence-splitter"
+version = "0.1.0"
+description = "语义分句引擎：按语义完整性和字数约束自动切割文本，输出结构化分句数据"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "PROJECT-012 Team"}]
+keywords = ["nlp", "sentence-splitter", "chinese", "english", "semantic", "multilingual"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+dependencies = [
+    "pydantic>=2.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# 语义分句（jieba 增强）
+semantic = ["jieba>=0.42.1"]
+# REST API
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.27"]
+# CLI（argparse 是 stdlib，无需额外）
+cli = []
+# 体验工作台
+workbench = ["streamlit>=1.30"]
+# LLM Tier
+llm = ["httpx>=0.27", "openai>=1.0"]
+# MCP Server
+mcp = ["mcp>=0.9"]
+# 语言检测
+langdetect = ["langdetect>=1.0.9"]
+# 全量安装
+all = [
+    "jieba>=0.42.1",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "streamlit>=1.30",
+    "httpx>=0.27",
+    "openai>=1.0",
+    "mcp>=0.9",
+    "langdetect>=1.0.9",
+]
+
+[project.scripts]
+sentence-splitter = "splitter.api.cli:main"
+
+[project.urls]
+"Homepage" = "https://github.com/Colinchiu007/PROJECT-012"
+"Bug Tracker" = "https://github.com/Colinchiu007/PROJECT-012/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+splitter = ["py.typed", "config/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow tests (LLM, etc.)",
+]

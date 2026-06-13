@@ -1,0 +1,78 @@
+# PROJECT-012 默认配置
+# 语义分句引擎
+
+# ============ 全局 ============
+language: "auto"  # auto | zh | en | ja | mixed
+enable_era: false  # 是否启用时代检测
+enable_llm: false  # 是否启用 LLM tier
+min_tier: 2        # 最低允许的 tier: 1=LLM, 2=Semantic, 3=Rule
+
+# ============ 多语言分句 ============
+sentence_tokenizer:
+  language: "auto"
+  handle_abbreviations: true
+  max_sentence_length: 200
+
+  # 跨语言默认缩写词表（用户可扩展）
+  custom_abbreviations:
+    # 中文
+    - "等"
+    - "即"
+    - "如"
+    - "称"
+    # 英文（v0.2 内置 18 个）
+    # Mr. Dr. Mrs. Ms. U.S. U.K. e.g. i.e. etc. vs. Inc. Ltd. Jr. Sr. a.m. p.m. No. Vol.
+
+  # 按语言特定配置
+  language_specific:
+    zh:
+      tokenizer: "jieba"
+      use_pos: true
+      entity_protection: true
+    en:
+      tokenizer: "whitespace"
+      use_pos: false
+      abbreviation_table: "default_en"
+      quote_pairs: [["\"", "\""], ["'", "'"]]
+      handle_ellipsis: true
+      handle_em_dash: true
+    ja:
+      enabled: false
+
+# ============ 场景级分割 ============
+scene:
+  target_seconds: 6.0
+  base_words_per_second: 3.3
+  speech_rate: 1.0
+  min_words_per_segment: 10
+  max_words_per_segment: 50
+  enforce_sentence_boundary: true
+  allow_single_sentence_overflow: true
+
+# ============ 字幕级分割 ============
+subtitle:
+  min_chars_per_block: 8
+  max_chars_per_block: 15
+  punctuation_priority:
+    - "。"
+    - "！"
+    - "？"
+    - "；"
+    - "，"
+    - "."
+    - "!"
+    - "?"
+    - ","
+    - "、"
+    - " "
+    - "\n"
+  time_calculation_method: "proportional"  # proportional | equal
+
+# ============ LLM Tier（可选）============
+llm:
+  provider: "openai"
+  model: "gpt-4o-mini"
+  api_key_env: "OPENAI_API_KEY"
+  base_url: null
+  timeout: 30
+  max_retries: 2
