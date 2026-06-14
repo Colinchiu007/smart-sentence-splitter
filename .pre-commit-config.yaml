@@ -1,0 +1,32 @@
+# Pre-commit 配置 — 提交前自动检查
+# 安装: pip install pre-commit && pre-commit install
+# 手动: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest tests/ -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+        # 注意：如果测试环境依赖多，可注释掉本 hook，改为 CI 上跑
