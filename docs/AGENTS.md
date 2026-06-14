@@ -8,8 +8,8 @@
 - **项目代号**: PROJECT-012
 - **目标用户**: 内容创作者 + 开发者 + AI 工作流用户
 - **核心价值**: 打通「文案→分句→字幕→逐句配图→轮播视频」自动化管线
-- **当前版本**: v0.3.0
-- **测试覆盖**: 175 个用例 100% 通过
+- **当前版本**: v0.4.0
+- **测试覆盖**: 216 个用例 100% 通过
 
 ## 🏗️ 关键架构路径
 
@@ -30,7 +30,7 @@ src/splitter/
 │   │   └── custom.py        ← Customization (adjust_dag)
 │   └── en/                  ← 英文 (空白分词)
 ├── tiers/
-│   ├── tier1_llm.py         ← v0.3 stub (is_available=False)
+│   ├── tier1_llm.py         ← v0.4 完整实做 (3 Provider)
 │   └── tier3_rule.py
 ├── texttiling/              ← 主题分割算法
 ├── scene_subtitle/          ← Layer 2 + 3
@@ -38,6 +38,12 @@ src/splitter/
 │   ├── detector.py
 │   └── postprocessor.py     ← v0.3 EraPostprocessor (lazy)
 ├── postprocessor.py         ← v0.2 → v0.3 增强 (chain 集成到 pipeline)
+├── llm/                      ← v0.4 LLM Tier Provider 抽象
+│   ├── base.py
+│   ├── openai_provider.py
+│   ├── xfyun_provider.py
+│   ├── ollama_provider.py
+│   └── prompts.py
 ├── models/                  ← 5 个 dataclass
 ├── api/cli.py
 └── utils/
@@ -149,26 +155,24 @@ python -c "from splitter import SmartSentenceSplitter; print('OK')"
 
 ### 🎯 当前迭代重点
 
-### v0.3 (✅ 完成)
-- AC 自动机 Match dataclass + emit 合并 (FoolNLTK 复用)
-- Customization DAG+DP 加权合并 (`adjust_dag()`)
-- Lazy EraDetector 加载
-- Postprocessor chain 集成到 pipeline 主流 (THULAC 复用)
-- EraPostprocessor（HanLP MTL 思想）
-- mode=precise + LLM Tier 接口预留 (LAC 复用)
-- 175 个测试用例
+### v0.4 (✅ 完成)
+- LLM Tier 完整实做 (OpenAI / 讯飞 MAAS / Ollama)
+- LLMSplitter 从 stub → 实做 (3 层容错 + 重试)
+- Pipeline 集成 LLM Tier (Lazy 加载 + 自动降级)
+- 216 个测试用例 (v0.3 175 + v0.4 新增 41)
 
-### v0.4 (下一步)
-- LLM Tier 实际实现 (OpenAI/xfyun 适配)
-- Tier 1 降级逻辑
-
-### v0.5 (计划)
+### v0.5 (下一步)
 - REST API (FastAPI)
 - OpenAPI 文档
+- REST 端点端到端测试
 
 ### v0.6 (计划)
 - Streamlit 体验工作台
-- 中文 100+ 测试用例
+- 端到端用户场景测试 (CLI + Web UI)
+
+### v0.7 (计划)
+- SRT/ASS 字幕导出
+- 生图提示词生成（结合 era_info + 分句）
 
 ## 🐛 常见问题 (FAQ)
 

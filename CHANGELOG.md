@@ -1,5 +1,91 @@
 # PROJECT-012 CHANGELOG
 
+## [0.4.0] - 2026-06-13
+
+### ✨ v0.4 — LLM Tier 完整实做（兑现 v0.3 stub 承诺）
+
+#### 核心能力
+
+- **3 个 LLM Provider** 全部实现：
+  - `OpenAIProvider` — GPT-4o-mini/GPT-4o（base_url 透传）
+  - `XfyunProvider` — 讯飞 MAAS API（与 OpenAI 协议兼容，默认 base_url 已配置）
+  - `OllamaProvider` — 本地 LLM（端口探测 `/api/tags`）
+- **LLMSplitter 从 stub → 实做**：
+  - 真实可调用 `is_available()` / `split()`
+  - Prompt 模板化（中文/英文双版本）
+  - 3 层容错：纯 JSON → 正则提取 → 行切分 → 原文兜底
+  - 重试机制（默认 max_retries=2）
+- **Pipeline 集成**：enable_llm=True 时，LLM Tier 加入 Tier 1 链头；不可用时自动跳过（降级到 Tier 2）
+- **Lazy 加载**：LLM splitter 实例不预加载，首次访问时创建
+
+#### 配置文件（config/splitter.yaml）
+
+```yaml
+llm:
+  provider: "openai"  # openai | xfyun | ollama
+  model: "gpt-4o-mini"
+  api_key_env: "OPENAI_API_KEY"  # 默认从环境变量读
+  base_url: null
+  timeout: 30
+  max_retries: 2
+  temperature: 0.0  # 分句要确定性
+  max_tokens: 4096
+```
+
+#### 关键代码
+
+**Provider 基类**（`src/splitter/llm/base.py`）：
+```python
+class LLMProvider(ABC):
+    @abstractmethod
+    def is_available(self) -> bool: ...
+    @abstractmethod
+    def chat(self, messages, **kwargs) -> str: ...
+```
+
+**LLMSplitter 3 层解析**（`src/splitter/tiers/tier1_llm.py:_parse_response`）：
+1. 直接 `json.loads(response)`
+2. 正则提取 `\[.*?\]`
+3. 按行切分 + 过滤 markdown
+4. 兜底：按原文标点切
+
+#### 📊 测试
+
+- 新增: **41 个测试用例**
+  - 3 个 Provider 单元测试（mock SDK 调用）: 20 个
+  - LLMSplitter 重构测试（parse_response 4 层、retry、is_available）: 21 个
+- **总计: 216 个测试用例 100% 通过 ✅**
+
+#### 📁 新增文件
+
+```
+src/splitter/
+├── llm/                          # 新 LLM 包
+│   ├── __init__.py
+│   ├── base.py                   # LLMProvider 抽象基类
+│   ├── openai_provider.py        # OpenAI 适配
+│   ├── xfyun_provider.py         # 讯飞 MAAS 适配
+│   ├── ollama_provider.py        # 本地 LLM 适配
+│   └── prompts.py                # 分句 prompt 模板
+└── tiers/
+    └── tier1_llm.py              # stub → 实做
+
+tests/unit/
+├── test_llm_providers.py          # 新 (20 个)
+└── test_tier1_llm.py             # 新 (21 个)
+```
+
+#### ⚠️ 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| LLM 返回非 JSON | 4 层容错：JSON → 正则 → 行切分 → 原文兜底 |
+| API key 泄露 | 只读环境变量，不写日志/异常 |
+| LLM 超时 | timeout 配置 + 重试 + 自动降级 |
+| 体积依赖 | `openai` SDK 仍走 optional dependency |
+
+---
+
 ## [0.3.0] - 2026-06-13
 
 ### ✨ v0.3 — 4 个竞品复用集成（HanLP/LAC/THULAC/FoolNLTK）

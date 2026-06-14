@@ -47,8 +47,20 @@ class SmartSentenceSplitter:
         from .tiers.tier3_rule import ChineseRuleSplitter, EnglishRuleSplitter
         from .texttiling.splitter import TextTilingSemanticSplitter
 
+        # v0.4: LLM Tier (Tier 1) — 真实可用时加入链头
+        from .tiers.tier1_llm import LLMSplitter
+        self.llm_enabled = self.config.get("enable_llm", False)
+        self._llm_splitter_instance = None
+
         # 中文 splitter 链
         zh_splitters: List[BaseSentenceSplitter] = []
+        if self.llm_enabled:
+            try:
+                llm = self._get_llm_splitter()
+                if llm.is_available():
+                    zh_splitters.append(llm)
+            except Exception:
+                pass  # LLM 不可用就跳过
         if self.enable_topic_seg:
             zh_splitters.append(TextTilingSemanticSplitter(
                 self.config.get("texttiling", {})
@@ -61,6 +73,13 @@ class SmartSentenceSplitter:
 
         # 英文 splitter 链
         en_splitters: List[BaseSentenceSplitter] = []
+        if self.llm_enabled:
+            try:
+                llm = self._get_llm_splitter()
+                if llm.is_available():
+                    en_splitters.append(llm)
+            except Exception:
+                pass
         if self.enable_topic_seg:
             en_splitters.append(TextTilingSemanticSplitter(
                 self.config.get("texttiling", {})
@@ -110,6 +129,13 @@ class SmartSentenceSplitter:
             from .era.detector import EraDetector
             self._era_detector_instance = EraDetector()
         return self._era_detector_instance
+
+    def _get_llm_splitter(self):
+        """v0.4: Lazy 加载 LLM Tier。"""
+        if self._llm_splitter_instance is None:
+            from .tiers.tier1_llm import LLMSplitter
+            self._llm_splitter_instance = LLMSplitter(self.config.get("llm", {}))
+        return self._llm_splitter_instance
 
     @property
     def era_detector(self):

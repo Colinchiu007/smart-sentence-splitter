@@ -75,7 +75,7 @@ class TestV3LLMTierStub:
             s.split("测试文本")
 
     def test_llm_splitter_repr(self):
-        s = LLMSplitter(provider="openai", model="gpt-4o-mini")
+        s = LLMSplitter({"provider": "openai", "model": "gpt-4o-mini"})
         r = repr(s)
         assert "openai" in r
         assert "gpt-4o-mini" in r
