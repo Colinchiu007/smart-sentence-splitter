@@ -1,5 +1,63 @@
 # PROJECT-012 CHANGELOG
 
+## [0.6.1] - 2026-06-14
+
+### ✨ v0.6.1 — PROJECT-011 桥接 (exporter)
+
+新增 `exporter/prompt_engine.py` — 将 PROJECT-012 的分句输出转换为 PROJECT-011 (prompt-engine) 的 OptimizeRequest 格式。
+
+#### 功能
+
+| 方法 | 输入 | 输出 | 用途 |
+|------|------|------|------|
+| `to_optimize_request(sentence, era?)` | SentenceBlock | dict (OptimizeRequest) | 单句 → 提示词 |
+| `to_batch_request(sentences, eras?)` | SentenceBlock[] | list[OptimizeRequest] | 批量 → 提示词 |
+| `from_split_result(result)` | SplitResult | list[OptimizeRequest] | 完整结果 → 批量提示词 |
+
+#### 转换规则
+
+- **语言→平台**: zh→mj, en→sd, ja→niji, auto→generic
+- **字数→参数**: too_short→创意+3, too_long→max_length=200
+- **时代→风格**: ancient→classical, modern→contemporary, mixed→eclectic
+
+#### 集成
+
+分离设计，无跨包依赖。PROJECT-012 产生数据，PROJECT-011（独立仓库）消费数据。集成点在数据格式层。
+
+```
+# PROJECT-012 分句 → 导出 → PROJECT-011 一键优化
+python -c "
+from splitter import SmartSentenceSplitter
+from splitter.exporter.prompt_engine import PromptEngineExporter
+
+result = SmartSentenceSplitter({'enable_era': True}).split('清军在甲午战争中死磕到底。')
+exporter = PromptEngineExporter()
+batch = exporter.from_split_result(result)
+# batch now ready for POST /v1/optimize/batch
+"
+```
+
+#### 📊 测试
+
+- **新增 9 个测试用例**（基础转换/时代/字数/批量/英文/空）
+- **总计: 269 个测试用例 100% 通过 + 5 skipped** ✅
+
+#### 📁 新增文件
+
+```
+src/splitter/exporter/
+├── __init__.py
+└── prompt_engine.py              # 新 (5.2KB)
+
+tests/unit/
+└── test_exporter.py               # 新 (9 个测试)
+
+examples/
+└── verify_exporter.py             # 新 (实测脚本)
+```
+
+---
+
 ## [0.6.0] - 2026-06-14
 
 ### ✨ v0.6 — 字数控制分句 (length_strategy)

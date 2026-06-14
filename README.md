@@ -208,7 +208,7 @@ src/splitter/
 
 ## 📋 版本
 
-当前版本：**v0.6.0** (2026-06-14)
+当前版本：**v0.6.1** (2026-06-14)
 
 完整历史见 [CHANGELOG.md](docs/CHANGELOG.md)
 
