@@ -1,5 +1,59 @@
 # PROJECT-012 CHANGELOG
 
+## [0.8.0] - 2026-06-14
+
+### ✨ v0.8.0 — SRT/ASS 字幕导出 + PROJECT-011 端到端桥接
+
+#### SubtitleExporter (SRT + ASS)
+
+`src/splitter/exporter/subtitle_exporter.py` — 导出标准字幕格式。
+
+**SRT**:
+```
+1
+00:00:00,000 --> 00:00:03,000
+今天天气真好
+```
+
+**ASS**: 完整头部 (Script Info + V4+ Styles + Events) + 角色名作为 Name 字段。
+
+**特性**: 跨场景时间累加, 零依赖, 纯字符串拼接。
+
+#### PromptEngineClient (PROJECT-011 HTTP 客户端)
+
+`src/splitter/exporter/prompt_engine_client.py` — 封装 PROJECT-011 REST API:
+
+- `health_check()` / `optimize()` / `optimize_batch()`
+- `build_optimize_payload()` / `parse_optimize_response()`
+
+**依赖**: `requests` (optional, 按需导入)
+
+#### 实测验证
+
+```
+输入剧本 → SmartSentenceSplitter (enable_script_analysis=True)
+        → 7 句 / 4 场, 自动填角色 (小明/小红) + 场景 (超市/公园/学校)
+        → SRT 字幕 (192 字符, 17.27s)
+        → Storyboard JSON (4 场)
+        → PROJECT-011 payload (platform=mj, creative=5, max_length=500)
+```
+
+#### 📊 测试
+
+- **新增 17 个测试** (12 SRT/ASS + 5 client)
+- **总计: 312 个测试 100% 通过 + 7 skipped** ✅
+
+#### 📁 新增文件
+
+```
+src/splitter/exporter/
+├── subtitle_exporter.py          # 新 (4.2KB)
+└── prompt_engine_client.py       # 新 (3.7KB)
+
+tests/unit/test_subtitle_exporter.py
+tests/integration/test_prompt_engine_client.py
+examples/verify_end_to_end.py
+```
 ## [0.7.0] - 2026-06-14
 
 ### ✨ v0.7.0 — 剧本分析 + 分镜增强 (Storyboard)

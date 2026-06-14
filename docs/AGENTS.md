@@ -8,8 +8,8 @@
 - **项目代号**: PROJECT-012
 - **目标用户**: 内容创作者 + 开发者 + AI 工作流用户
 - **核心价值**: 打通「文案→分句→字幕→逐句配图→轮播视频」自动化管线
-- **当前版本**: v0.7.0
-- **测试覆盖**: 290 个用例 100% 通过 + 5 skipped (无 LLM key)
+- **当前版本**: v0.8.0
+- **测试覆盖**: 312 个用例 100% 通过 + 7 skipped (无 LLM key)
 
 ## 🏗️ 关键架构路径
 
@@ -171,17 +171,18 @@ python -c "from splitter import SmartSentenceSplitter; print('OK')"
 
 ### 🎯 当前迭代重点
 
-### v0.6 (✅ 完成)
-- LengthSegmenter (A 重切 / B 标尺 / off 透传)
-- SentenceBlock 扩展 length_status + length_strategy_applied
-- Pipeline 集成 (步骤 6.5)
-- 260 个测试用例 (v0.5.1 239 + v0.6 新增 21)
+### v0.7 (✅ 完成)
+- ScriptAnalyzer 剧本分析 (角色/场景/梗概/场景变化)
+- SceneSegment 扩展 (characters/setting/mood/story_phase)
+- StoryboardExporter 分镜 JSON 输出
+- Pipeline 集成 (enable_script_analysis)
+- 295 个测试 (v0.7.0 290 + v0.7.1 5)
 
-### v0.7 (下一步)
-- SRT/ASS 字幕导出
-- 生图提示词生成（结合 era_info + 分句）
-- 模板 DSL（借鉴 sd-dynamic-prompts）
-- 结构化 prompt Schema（借鉴 awesome-gpt-image-2）
+### v0.8 (✅ 完成)
+- SubtitleExporter (SRT + ASS 双格式)
+- PromptEngineClient (PROJECT-011 HTTP 桥接)
+- Storyboard 全流程端到端实测
+- 312 个测试 (v0.7.1 295 + v0.8 新增 17)
 
 ## 🐛 常见问题 (FAQ)
 
