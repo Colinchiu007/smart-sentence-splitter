@@ -18,23 +18,36 @@ from ..models import SentenceBlock
 class TierChain:
     """分句器降级链。"""
 
-    def __init__(self, splitters: List[BaseSentenceSplitter], min_tier: int = 2):
+    def __init__(
+        self,
+        splitters: List[BaseSentenceSplitter],
+        min_tier: int = 2,
+        min_tier_provider: Optional[Callable[[], int]] = None,
+    ):
         """
         Args:
             splitters: 分句器列表，按优先级排序 [tier1, tier2, tier3]
             min_tier: 最低允许的 tier（1=LLM, 2=Semantic, 3=Rule）
+            min_tier_provider: callable 返回当前 min_tier（如果提供，min_tier 参数被忽略）
         """
         self.splitters = splitters
-        self.min_tier = min_tier  # 1/2/3
+        self._min_tier_value = min_tier
+        self._min_tier_provider = min_tier_provider
+
+    @property
+    def min_tier(self) -> int:
+        if self._min_tier_provider is not None:
+            return self._min_tier_provider()
+        return self._min_tier_value
 
     def split(self, text: str) -> tuple[List[SentenceBlock], str]:
         """执行降级链，返回 (分句结果, 实际使用的 tier 名称)。"""
         last_error: Optional[Exception] = None
-
+        min_tier = self.min_tier  # 每次重新读
         for splitter in self.splitters:
             tier_num = self._parse_tier_num(splitter.tier)
-            if tier_num < self.min_tier:
-                continue  # 用户禁止使用比 min_tier 更精细的 tier
+            if tier_num < min_tier:
+                continue
             if not splitter.is_available():
                 continue
             try:

@@ -1,0 +1,272 @@
+"""REST API (FastAPI) - v0.5 新增.
+
+端点:
+- GET  /health          — 健康检查
+- GET  /capabilities    — 能力声明 (tiers/languages/modes)
+- POST /v1/split        — 文本分句
+- GET  /v1/info         — 版本 + 配置信息
+
+启动:
+    uvicorn splitter.api.rest_api:app --reload
+    # 或
+    python -m splitter.api.rest_api
+"""
+
+from __future__ import annotations
+import os
+from typing import Optional, Dict, Any, List
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from .. import __version__
+from ..pipeline import SmartSentenceSplitter
+from ..models import SplitResult
+from ..core.base_splitter import BaseSentenceSplitter
+
+
+# === Pydantic 请求/响应模型 ===
+
+class SplitRequest(BaseModel):
+    """POST /v1/split 请求体。"""
+    text: str = Field(..., min_length=1, description="待分句的文本")
+    language: str = Field(default="auto", description="auto | zh | en")
+    mode: str = Field(default="balanced", description="fast | balanced | precise")
+    enable_era: bool = Field(default=False, description="是否启用时代检测")
+    enable_topic_segmentation: bool = Field(default=False, description="是否启用 TextTiling")
+    enable_llm: bool = Field(default=False, description="是否启用 LLM Tier")
+    config: Optional[Dict[str, Any]] = Field(default=None, description="额外配置覆盖")
+
+
+class SentenceResponse(BaseModel):
+    """分句结果中的单个句子。"""
+    index: int
+    text: str
+    language: str
+    tier: str
+    confidence: float
+    char_count: int
+    is_topic_boundary: bool = False
+    topic_depth_score: float = 0.0
+
+
+class SceneResponse(BaseModel):
+    """分句结果中的单个场景。"""
+    segment_id: int
+    text: str
+    estimated_duration: float
+    target_words: int
+    era: Optional[str] = None
+    era_confidence: Optional[float] = None
+    subtitle_count: int = 0
+
+
+class SplitResponse(BaseModel):
+    """POST /v1/split 响应体。"""
+    text_length: int
+    language: str
+    tier_used: str
+    total_duration: float
+    total_scenes: int
+    sentences: List[SentenceResponse]
+    scenes: List[SceneResponse]
+    config_snapshot: Dict[str, Any]
+
+
+class HealthResponse(BaseModel):
+    """GET /health 响应。"""
+    status: str
+    version: str
+
+
+class CapabilityInfo(BaseModel):
+    """能力声明。"""
+    name: str
+    available: bool
+    description: str
+
+
+class CapabilitiesResponse(BaseModel):
+    """GET /capabilities 响应。"""
+    version: str
+    languages: List[str]
+    tiers: List[CapabilityInfo]
+    modes: List[str]
+    features: List[str]
+
+
+class InfoResponse(BaseModel):
+    """GET /v1/info 响应。"""
+    version: str
+    llm_available: bool
+    llm_provider: Optional[str] = None
+    era_enabled: bool
+    topic_segmentation_enabled: bool
+
+
+# === FastAPI app ===
+
+app = FastAPI(
+    title="Smart Sentence Splitter API",
+    description="PROJECT-012 智能语义分句引擎 REST API",
+    version=__version__,
+)
+
+
+def _detect_capabilities() -> CapabilitiesResponse:
+    """动态检测能力。"""
+    # 检测 LLM
+    llm_openai = bool(os.getenv("OPENAI_API_KEY"))
+    llm_xfyun = bool(os.getenv("XFYUN_API_KEY"))
+    llm_ollama = False
+    try:
+        import requests
+        resp = requests.get("http://localhost:11434/api/tags", timeout=1)
+        llm_ollama = resp.status_code == 200
+    except Exception:
+        pass
+    llm_any = llm_openai or llm_xfyun or llm_ollama
+
+    tiers = [
+        CapabilityInfo(name="tier1_llm", available=llm_any,
+                      description="LLM 语义分句（OpenAI/讯飞/Ollama）"),
+        CapabilityInfo(name="tier2_texttiling", available=True,
+                      description="TextTiling 主题边界识别（需 enable_topic_segmentation）"),
+        CapabilityInfo(name="tier2_jieba", available=True,
+                      description="jieba 分词+词性标注（中文）"),
+        CapabilityInfo(name="tier3_rule", available=True,
+                      description="规则分句（零依赖 fallback）"),
+    ]
+
+    return CapabilitiesResponse(
+        version=__version__,
+        languages=["zh", "en", "ja", "mixed", "auto"],
+        tiers=tiers,
+        modes=["fast", "balanced", "precise"],
+        features=[
+            "sentence_segmentation",
+            "scene_segmentation",
+            "subtitle_segmentation",
+            "era_detection (optional)",
+            "topic_boundary_detection (optional)",
+            "user_dictionary (AC automaton)",
+        ],
+    )
+
+
+@app.get("/health", response_model=HealthResponse)
+def health():
+    """健康检查。"""
+    return HealthResponse(status="ok", version=__version__)
+
+
+@app.get("/capabilities", response_model=CapabilitiesResponse)
+def capabilities():
+    """能力声明。"""
+    return _detect_capabilities()
+
+
+@app.get("/v1/info", response_model=InfoResponse)
+def info():
+    """运行时配置信息。"""
+    # 临时构造 splitter 检测 LLM
+    llm_avail = False
+    llm_provider = None
+    try:
+        from splitter.tiers.tier1_llm import LLMSplitter
+        s = LLMSplitter()
+        llm_avail = s.is_available()
+        llm_provider = s.provider_name if llm_avail else None
+    except Exception:
+        pass
+    return InfoResponse(
+        version=__version__,
+        llm_available=llm_avail,
+        llm_provider=llm_provider,
+        era_enabled=False,  # 启动时默认不启用
+        topic_segmentation_enabled=False,
+    )
+
+
+@app.post("/v1/split", response_model=SplitResponse)
+def split(req: SplitRequest):
+    """POST /v1/split — 核心分句端点。"""
+    # 构造配置
+    config: Dict[str, Any] = {}
+    if req.config:
+        config.update(req.config)
+    config["language"] = req.language
+    config["mode"] = req.mode
+    config["enable_era"] = req.enable_era
+    config["enable_topic_segmentation"] = req.enable_topic_segmentation
+    config["enable_llm"] = req.enable_llm
+
+    try:
+        splitter = SmartSentenceSplitter(config)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Config error: {e}")
+
+    # 分句
+    try:
+        result: SplitResult = splitter.split(req.text)
+    except NotImplementedError as e:
+        # LLM Tier 未配置 key
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Split error: {e}")
+
+    # 转换响应
+    return _to_response(result, req)
+
+
+def _to_response(result: SplitResult, req: SplitRequest) -> SplitResponse:
+    """SplitResult → SplitResponse。"""
+    sentences = [
+        SentenceResponse(
+            index=s.index,
+            text=s.text,
+            language=s.language,
+            tier=s.tier,
+            confidence=s.confidence,
+            char_count=s.char_count,
+            is_topic_boundary=s.is_topic_boundary,
+            topic_depth_score=s.topic_depth_score,
+        )
+        for s in result.sentences
+    ]
+    scenes = []
+    for sc in result.scenes:
+        era = sc.era_info.era if sc.era_info else None
+        era_conf = sc.era_info.confidence if sc.era_info else None
+        scenes.append(SceneResponse(
+            segment_id=sc.segment_id,
+            text=sc.text,
+            estimated_duration=sc.estimated_duration,
+            target_words=sc.target_words,
+            era=era,
+            era_confidence=era_conf,
+            subtitle_count=len(sc.subtitles),
+        ))
+
+    return SplitResponse(
+        text_length=len(req.text),
+        language=result.language,
+        tier_used=result.tier_used,
+        total_duration=result.total_duration,
+        total_scenes=result.total_scenes,
+        sentences=sentences,
+        scenes=scenes,
+        config_snapshot=result.config_snapshot,
+    )
+
+
+def main():
+    """CLI 启动入口。"""
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("splitter.api.rest_api:app", host=host, port=port, reload=False)
+
+
+if __name__ == "__main__":
+    main()

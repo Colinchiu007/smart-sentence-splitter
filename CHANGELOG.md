@@ -1,5 +1,62 @@
 # PROJECT-012 CHANGELOG
 
+## [0.5.0] - 2026-06-13
+
+### ✨ v0.5 — 3 步完成：真实 LLM 测试 + REST API + Streamlit 工作台
+
+#### Step 1: 真实 LLM 端到端测试
+- 新增 `tests/integration/test_real_llm.py` — 5 个真实 LLM 集成测试
+- 跑法: `export OPENAI_API_KEY=*** && python -m pytest tests/integration/test_real_llm.py -v`
+- **自动 skip 机制**：无 key 时所有测试 skip 不报错
+- 覆盖：openai 中文/英文分句、pipeline 集成、xfyun 中文/pipeline
+
+#### Step 2: REST API (FastAPI)
+- 新增 `src/splitter/api/rest_api.py` — 4 个端点
+  - `GET  /health` — 健康检查
+  - `GET  /capabilities` — 能力声明（tiers / languages / modes / features）
+  - `GET  /v1/info` — 运行时配置（LLM 可用性等）
+  - `POST /v1/split` — 核心分句端点（Pydantic 验证）
+- 自动生成 OpenAPI schema → `GET /docs` Swagger UI
+- 启动: `uvicorn splitter.api.rest_api:app --reload` 或 `python -m splitter.api.rest_api`
+- 错误处理：400 (config) / 422 (Pydantic) / 503 (LLM key 缺失) / 500 (内部错误)
+
+**关键修复**：TierChain 重构 — `min_tier_provider` callable，mode=fast/balanced/precise 现在能真正生效（之前是 `_apply_mode` 改了 config 但 chain 已构造）
+
+#### Step 3: Streamlit 体验工作台
+- 新增 `workbench/app.py` (5.9KB) — 完整 Web UI
+- **侧栏配置**：语言 / 模式 / 高级选项（era / topic / LLM）
+- **主区域**：输入文本框 + 分句按钮 + 句子列表（标 ⬜/🟦 topic boundary）+ 场景表格
+- **JSON 输出**：可展开查看 + 一键下载 `.json` 文件
+- **底部说明**：模式/Tier/自动降级规则
+- 启动: `streamlit run workbench/app.py` 或 `bash scripts/run_workbench.sh`
+
+#### 📊 测试
+
+- 新增: **18 个测试用例**
+  - 5 个真 LLM 测试（skip when no key）
+  - 13 个 REST API 测试（health/capabilities/info/split + OpenAPI schema）
+- **总计: 234 个测试用例 100% 通过 + 5 个 skipped（无 key） ✅**
+
+#### 📁 新增文件
+
+```
+src/splitter/api/
+└── rest_api.py                     # 新 (FastAPI app, 8 routes)
+
+workbench/
+└── app.py                          # 新 (Streamlit UI, 5.9KB)
+
+scripts/
+└── run_workbench.sh                # 新 (启动脚本)
+
+tests/integration/
+├── test_real_llm.py                # 新 (5 个真 LLM 测试)
+├── test_rest_api.py                # 新 (13 个 REST 测试)
+└── test_workbench.py               # 新 (5 个工作台测试)
+```
+
+---
+
 ## [0.4.0] - 2026-06-13
 
 ### ✨ v0.4 — LLM Tier 完整实做（兑现 v0.3 stub 承诺）

@@ -10,6 +10,8 @@
 
 - 🧠 **三级分句降级链** — LLM (Tier 1) → TextTiling+jieba (Tier 2) → 规则 (Tier 3)
 - 🤖 **3 个 LLM Provider** — OpenAI / 讯飞 MAAS / Ollama（v0.4）
+- 🌐 **REST API (FastAPI)** — 4 端点 + OpenAPI 文档（v0.5）
+- 🖥️ **Streamlit 体验工作台** — 侧栏配置 + 实时分句 + JSON 下载（v0.5）
 - 🌍 **多语言原生支持** — 中文 (jieba 增强) + 英文 (缩写+引号保护) + 中英混排路由
 - 🪶 **零依赖核心** — 仅 `pydantic` + `PyYAML`，jieba/streamlit/fastapi 全部 optional
 - 🪡 **AC 自动机用户词典** — O(n) 多模式匹配 + DAG+DP 加权合并 (FoolNLTK/LAC 复用)
@@ -171,7 +173,7 @@ python -m pytest tests/unit/
 # 详细模式
 python -m pytest tests/ -v
 
-# 当前测试数：216 ✅
+# 当前测试数：234 ✅
 ```
 
 ## 📚 文档
@@ -205,7 +207,7 @@ src/splitter/
 
 ## 📋 版本
 
-当前版本：**v0.4.0** (2026-06-13)
+当前版本：**v0.5.0** (2026-06-13)
 
 完整历史见 [CHANGELOG.md](docs/CHANGELOG.md)
 

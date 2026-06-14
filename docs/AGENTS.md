@@ -8,8 +8,8 @@
 - **项目代号**: PROJECT-012
 - **目标用户**: 内容创作者 + 开发者 + AI 工作流用户
 - **核心价值**: 打通「文案→分句→字幕→逐句配图→轮播视频」自动化管线
-- **当前版本**: v0.4.0
-- **测试覆盖**: 216 个用例 100% 通过
+- **当前版本**: v0.5.0
+- **测试覆盖**: 234 个用例 100% 通过 + 5 skipped (无 LLM key)
 
 ## 🏗️ 关键架构路径
 
@@ -45,7 +45,11 @@ src/splitter/
 │   ├── ollama_provider.py
 │   └── prompts.py
 ├── models/                  ← 5 个 dataclass
-├── api/cli.py
+├── api/
+│   ├── cli.py
+│   └── rest_api.py        ← v0.5 新增 (FastAPI)
+├── workbench/                  ← v0.5 新增 (Streamlit)
+│   └── app.py
 └── utils/
 ```
 

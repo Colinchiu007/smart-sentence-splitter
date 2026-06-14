@@ -69,7 +69,11 @@ class SmartSentenceSplitter:
             self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("zh", {})
         ))
         zh_splitters.append(ChineseRuleSplitter())
-        self._zh_chain = TierChain(splitters=zh_splitters, min_tier=self.config.get("min_tier", 2))
+        # 关键：TierChain min_tier 来自一个可调用的 lambda，每次 split 都重新读 self.config
+        self._zh_chain = TierChain(
+            splitters=zh_splitters,
+            min_tier_provider=lambda: self.config.get("min_tier", 2),
+        )
 
         # 英文 splitter 链
         en_splitters: List[BaseSentenceSplitter] = []
@@ -88,7 +92,10 @@ class SmartSentenceSplitter:
             self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("en", {})
         ))
         en_splitters.append(EnglishRuleSplitter())
-        self._en_chain = TierChain(splitters=en_splitters, min_tier=self.config.get("min_tier", 2))
+        self._en_chain = TierChain(
+            splitters=en_splitters,
+            min_tier_provider=lambda: self.config.get("min_tier", 2),
+        )
 
         # 场景 + 字幕
         self.scene_segmenter = SceneSegmenter(self.config.get("scene", {}))
