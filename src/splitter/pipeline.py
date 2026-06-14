@@ -144,6 +144,54 @@ class SmartSentenceSplitter:
             self._llm_splitter_instance = LLMSplitter(self.config.get("llm", {}))
         return self._llm_splitter_instance
 
+    # ===== v0.7: 剧本分析 =====
+
+    def _analyze_script(
+        self, text: str, scenes: List
+    ) -> Optional[Dict[str, Any]]:
+        """对全文做剧本分析，注入角色/场景到每个 SceneSegment。"""
+        from .script.script_analyzer import ScriptAnalyzer
+        analyzer = ScriptAnalyzer()
+        return analyzer.analyze(text)
+
+    def _enrich_scenes(
+        self, scenes: List, script_analysis: Dict[str, Any]
+    ) -> None:
+        """把角色/场景列表注入到每个 SceneSegment 中。
+
+        对每个场景，检查文本中是否包含角色名或场景名，
+        匹配的则填到对应字段。
+        """
+        characters = script_analysis.get("characters", [])
+        settings = script_analysis.get("settings", [])
+
+        for scene in scenes:
+            text = scene.text
+            # 角色匹配
+            scene_chars = [c for c in characters if c in text]
+            if scene_chars:
+                scene.characters = scene_chars
+            # 场景匹配
+            scene_setting = [s for s in settings if s in text]
+            if scene_setting:
+                scene.setting = scene_setting[0]
+            # 简单情绪启发式
+            scene.mood = self._infer_mood(text)
+
+    def _infer_mood(self, text: str) -> str:
+        """简单情绪启发式。"""
+        mood_map = {
+            "愤怒": "angry", "生气": "angry", "怒": "angry",
+            "悲伤": "sad", "哭了": "sad", "哭": "sad",
+            "开心": "happy", "笑": "happy", "高兴": "happy",
+            "紧张": "tense", "担心": "tense", "急": "tense",
+            "平静": "calm", "安静": "calm",
+        }
+        for kw, mood in mood_map.items():
+            if kw in text:
+                return mood
+        return ""
+
     @property
     def era_detector(self):
         """向后兼容：暴露 era_detector 属性（lazy）。"""
@@ -264,6 +312,14 @@ class SmartSentenceSplitter:
         # 7. 场景级分割
         scenes = self.scene_segmenter.segment(sentences)
 
+        # 7.5 v0.7: 剧本分析 + 角色/场景注入
+        script_analysis = None
+        if self.config.get("enable_script_analysis", False):
+            script_analysis = self._analyze_script(text, scenes)
+            # 把角色/场景注入到每个 SceneSegment
+            if script_analysis and "characters" in script_analysis:
+                self._enrich_scenes(scenes, script_analysis)
+
         # 8. 字幕级分割
         for scene in scenes:
             subtitles = self.subtitle_segmenter.segment(scene)
@@ -275,6 +331,7 @@ class SmartSentenceSplitter:
             tier_used=tier_used,
             language=detected_lang,
             config_snapshot=self.config,
+            script_analysis=script_analysis,
         )
 
         # 9. F5: Postprocessor chain

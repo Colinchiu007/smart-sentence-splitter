@@ -1,7 +1,7 @@
 """SplitResult data model — the final output of SmartSentenceSplitter.split()."""
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .sentence import SentenceBlock
 from .scene import SceneSegment
 
@@ -19,6 +19,7 @@ class SplitResult:
         total_words: 总字数
         total_scenes: 总场景数
         config_snapshot: 当时使用的配置快照
+        script_analysis: 剧本分析结果 (v0.7 新增, 可选)
     """
 
     sentences: List[SentenceBlock] = field(default_factory=list)
@@ -29,6 +30,7 @@ class SplitResult:
     total_words: int = 0
     total_scenes: int = 0
     config_snapshot: Dict[str, Any] = field(default_factory=dict)
+    script_analysis: Optional[Dict[str, Any]] = None  # v0.7
 
     def __post_init__(self):
         if self.total_scenes == 0 and self.scenes:
@@ -39,7 +41,7 @@ class SplitResult:
             self.total_words = sum(len(s.text) for s in self.scenes)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "sentences": [s.to_dict() for s in self.sentences],
             "scenes": [s.to_dict() for s in self.scenes],
             "tier_used": self.tier_used,
@@ -49,3 +51,6 @@ class SplitResult:
             "total_scenes": self.total_scenes,
             "config_snapshot": self.config_snapshot,
         }
+        if self.script_analysis:
+            d["script_analysis"] = self.script_analysis
+        return d

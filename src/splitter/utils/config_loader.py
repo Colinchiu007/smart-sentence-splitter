@@ -17,6 +17,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "mode": "balanced",
     "enable_era": False,
     "enable_llm": False,
+    "enable_script_analysis": False,  # v0.7
     "enable_topic_segmentation": False,
     "min_tier": 2,
     "sentence_tokenizer": {
