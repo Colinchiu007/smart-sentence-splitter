@@ -1,5 +1,76 @@
 # PROJECT-012 CHANGELOG
 
+## [0.6.0] - 2026-06-14
+
+### ✨ v0.6 — 字数控制分句 (length_strategy)
+
+#### 新增功能
+
+**LengthSegmenter** — 按字数控制分句，3 种策略可切换：
+
+| 策略 | 行为 | 适用场景 |
+|------|------|---------|
+| **off** | 透传，标记 status=ok | 不需要字数约束 |
+| **A** | 按字数 + 优先级标点**重切**（每块 3-15 字）| 短信/TTS/字幕/AI 生图 prompt |
+| **B** | 不切，标 length_status (ok/too_short/too_long) | 稿件分析/超长警告 |
+
+**默认 B 模式** — 兼容 v0.5.1 现有行为，**239 个旧测试 0 修改**。
+
+#### 关键设计
+
+- **3 种模式可切换** — `length.strategy` 字段
+- **数据模型扩展** — `SentenceBlock.length_status` + `length_strategy_applied`
+- **Pipeline 集成** — 步骤 6.5（分句后，场景前）
+- **优先级标点** — 中文句末 `。！？；` 优先，弱分隔 `，` 其次
+- **贪心切** — 在 max_chars 范围内找最右的标点
+- **强制切兜底** — 无标点时按 max_chars 硬切
+
+#### 配置
+
+```yaml
+length:
+  strategy: "B"  # off | A | B
+  min_chars: 3
+  max_chars: 15
+  prefer_punctuation: true
+  warning_on_violation: true
+```
+
+#### 📊 测试
+
+- **新增 21 个测试用例**（默认 B / A 模式 / 边界 / 英文 / 异常）
+- **总计: 260 个测试用例 100% 通过 + 5 skipped** ✅
+
+#### 实测对比
+
+输入：`"今天天气真好，阳光明媚，我们决定去郊外的公园散步，享受难得的周末时光。"`
+
+- **B 模式**：1 句, status=too_long (32字)
+- **A 模式**：3 块（"今天天气真好，阳光明媚，" + "我们决定去郊外的公园散步，" + "享受难得的周末时光。"）
+- **off 模式**：原样通过
+
+#### 📁 新增/修改文件
+
+```
+src/splitter/
+├── scene_subtitle/
+│   └── length_segmenter.py          # 新 (7.5KB)
+├── models/
+│   └── sentence.py                   # 加 2 字段 (length_status, length_strategy_applied)
+├── pipeline.py                       # 步骤 6.5 集成
+└── utils/config_loader.py            # DEFAULT_CONFIG 加 length 段
+
+config/splitter.yaml                  # 加 length 段
+
+tests/unit/
+└── test_length_segmenter.py          # 新 (21 个测试)
+
+examples/
+└── verify_length_strategy.py         # 新 (实测脚本)
+```
+
+---
+
 ## [0.5.1] - 2026-06-14
 
 ### ✨ v0.5.1 — 真实 LLM 验证 + MCP Server + 4 个缺陷修复

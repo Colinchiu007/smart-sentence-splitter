@@ -62,6 +62,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         ],
         "time_calculation_method": "proportional",
     },
+    "length": {  # v0.6 新增
+        "strategy": "B",
+        "min_chars": 3,
+        "max_chars": 15,
+        "prefer_punctuation": True,
+        "warning_on_violation": True,
+    },
     "llm": {
         "provider": "openai",
         "model": "gpt-4o-mini",

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smart-sentence-splitter"
-version = "0.1.0"
+version = "0.6.0"
 description = "语义分句引擎：按语义完整性和字数约束自动切割文本，输出结构化分句数据"
 readme = "README.md"
 requires-python = ">=3.11"

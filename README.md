@@ -9,6 +9,7 @@
 ## ✨ 核心特性
 
 - 🧠 **三级分句降级链** — LLM (Tier 1) → TextTiling+jieba (Tier 2) → 规则 (Tier 3)
+- 📏 **字数控制分句 (length_strategy)** — A 重切 / B 标尺 / off 透传（v0.6）
 - 🤖 **3 个 LLM Provider** — OpenAI / 讯飞 MAAS / Ollama（v0.4）
 - 🌐 **REST API (FastAPI)** — 4 端点 + OpenAPI 文档（v0.5）
 - 🖥️ **Streamlit 体验工作台** — 侧栏配置 + 实时分句 + JSON 下载（v0.5）
@@ -173,7 +174,7 @@ python -m pytest tests/unit/
 # 详细模式
 python -m pytest tests/ -v
 
-# 当前测试数：234 ✅
+# 当前测试数：260 ✅
 ```
 
 ## 📚 文档
@@ -207,7 +208,7 @@ src/splitter/
 
 ## 📋 版本
 
-当前版本：**v0.5.0** (2026-06-13)
+当前版本：**v0.6.0** (2026-06-14)
 
 完整历史见 [CHANGELOG.md](docs/CHANGELOG.md)
 

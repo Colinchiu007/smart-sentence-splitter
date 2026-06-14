@@ -249,6 +249,18 @@ class SmartSentenceSplitter:
         for s in sentences:
             s.language = s.language if s.language != "zh" else lang_tag
 
+        # 6.5 v0.6: 字数控制策略 (默认 B, 不切)
+        from .scene_subtitle.length_segmenter import LengthSegmenter
+        length_cfg = self.config.get("length", {})
+        length_seg = LengthSegmenter(
+            strategy=length_cfg.get("strategy", "B"),
+            min_chars=length_cfg.get("min_chars", 3),
+            max_chars=length_cfg.get("max_chars", 15),
+            prefer_punctuation=length_cfg.get("prefer_punctuation", True),
+            warning_on_violation=length_cfg.get("warning_on_violation", True),
+        )
+        sentences = length_seg.segment(sentences)
+
         # 7. 场景级分割
         scenes = self.scene_segmenter.segment(sentences)
 

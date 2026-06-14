@@ -33,6 +33,9 @@ class SentenceBlock:
     confidence: float = 1.0
     is_topic_boundary: bool = False
     topic_depth_score: float = 0.0
+    # v0.6 新增字段
+    length_status: str = "ok"  # ok | too_short | too_long
+    length_strategy_applied: str = "none"  # none | A | B
 
     def __post_init__(self):
         if not self.text:

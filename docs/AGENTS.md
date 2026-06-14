@@ -8,8 +8,8 @@
 - **项目代号**: PROJECT-012
 - **目标用户**: 内容创作者 + 开发者 + AI 工作流用户
 - **核心价值**: 打通「文案→分句→字幕→逐句配图→轮播视频」自动化管线
-- **当前版本**: v0.5.1
-- **测试覆盖**: 239 个用例 100% 通过 + 5 skipped (无 LLM key)
+- **当前版本**: v0.6.0
+- **测试覆盖**: 260 个用例 100% 通过 + 5 skipped (无 LLM key)
 
 ## 🏗️ 关键架构路径
 
@@ -106,6 +106,16 @@ src/splitter/
 6. 失败不应影响主流程（在 chain.run() 内部 try/except）
 7. 更新 CHANGELOG
 
+### 8. 新增长度策略流程（v0.6+）
+1. 修改 `LengthSegmenter` 时不影响默认 B 模式行为
+2. 3 种策略: off / A (重切) / B (标尺, 默认)
+3. A 模式算法: 贪心在 `max_chars` 范围内找最右标点切；无标点按 max_chars 硬切
+4. B 模式算法: 不切，只打 `length_status` 标签 (ok/too_short/too_long)
+5. 配置段: `length.strategy/min_chars/max_chars/prefer_punctuation/warning_on_violation`
+6. 数据模型字段: `SentenceBlock.length_status` + `length_strategy_applied` (有默认值, 兼容旧代码)
+7. Pipeline 集成点: 步骤 6.5 (分句后, 场景前)
+8. 写测试 (`tests/unit/test_length_segmenter.py`)
+
 ## 🧪 测试命令
 
 ```bash
@@ -159,24 +169,17 @@ python -c "from splitter import SmartSentenceSplitter; print('OK')"
 
 ### 🎯 当前迭代重点
 
-### v0.4 (✅ 完成)
-- LLM Tier 完整实做 (OpenAI / 讯飞 MAAS / Ollama)
-- LLMSplitter 从 stub → 实做 (3 层容错 + 重试)
-- Pipeline 集成 LLM Tier (Lazy 加载 + 自动降级)
-- 216 个测试用例 (v0.3 175 + v0.4 新增 41)
+### v0.6 (✅ 完成)
+- LengthSegmenter (A 重切 / B 标尺 / off 透传)
+- SentenceBlock 扩展 length_status + length_strategy_applied
+- Pipeline 集成 (步骤 6.5)
+- 260 个测试用例 (v0.5.1 239 + v0.6 新增 21)
 
-### v0.5 (下一步)
-- REST API (FastAPI)
-- OpenAPI 文档
-- REST 端点端到端测试
-
-### v0.6 (计划)
-- Streamlit 体验工作台
-- 端到端用户场景测试 (CLI + Web UI)
-
-### v0.7 (计划)
+### v0.7 (下一步)
 - SRT/ASS 字幕导出
 - 生图提示词生成（结合 era_info + 分句）
+- 模板 DSL（借鉴 sd-dynamic-prompts）
+- 结构化 prompt Schema（借鉴 awesome-gpt-image-2）
 
 ## 🐛 常见问题 (FAQ)
 

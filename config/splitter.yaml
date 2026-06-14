@@ -70,6 +70,14 @@ subtitle:
     - "\n"
   time_calculation_method: "proportional"  # proportional | equal
 
+# ============ 字数控制策略 (v0.6 新增) ============
+length:
+  strategy: "B"  # off | A | B  (默认 B, 不破坏现有行为)
+  min_chars: 3
+  max_chars: 15
+  prefer_punctuation: true
+  warning_on_violation: true
+
 # ============ LLM Tier（可选）============
 llm:
   provider: "openai"
