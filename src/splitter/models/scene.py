@@ -28,6 +28,11 @@ class SceneSegment:
     sentences: List[SentenceBlock] = field(default_factory=list)
     era_info: Optional[EraInfo] = None
     subtitles: List[SubtitleBlock] = field(default_factory=list)
+    # v0.7 新增: 分镜元数据
+    characters: List[str] = field(default_factory=list)
+    setting: str = ""
+    mood: str = ""
+    story_phase: str = ""
 
     def __post_init__(self):
         if self.segment_id < 0:
@@ -54,4 +59,25 @@ class SceneSegment:
             "era_info": self.era_info.to_dict() if self.era_info else None,
             "subtitle_count": len(self.subtitles),
             "subtitles": [sub.to_dict() for sub in self.subtitles],
+            # v0.7
+            "characters": self.characters,
+            "setting": self.setting,
+            "mood": self.mood,
+            "story_phase": self.story_phase,
         }
+
+    def to_image_hint(self) -> str:
+        """生成给 PROJECT-011 的画面提示词片段。
+
+        格式: "角色(在/的)场景, 情绪, 时代风格"
+        """
+        parts = [self.text]
+        if self.characters:
+            parts.append(f"角色:{','.join(self.characters)}")
+        if self.setting:
+            parts.append(f"场景:{self.setting}")
+        if self.mood:
+            parts.append(f"氛围:{self.mood}")
+        if self.era_info and self.era_info.era:
+            parts.append(f"风格:{self.era_info.era}")
+        return ", ".join(parts)

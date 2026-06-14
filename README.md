@@ -174,7 +174,7 @@ python -m pytest tests/unit/
 # 详细模式
 python -m pytest tests/ -v
 
-# 当前测试数：260 ✅
+# 当前测试数：290 ✅
 ```
 
 ## 📚 文档
@@ -208,7 +208,7 @@ src/splitter/
 
 ## 📋 版本
 
-当前版本：**v0.6.1** (2026-06-14)
+当前版本：**v0.7.0** (2026-06-14)
 
 完整历史见 [CHANGELOG.md](docs/CHANGELOG.md)
 

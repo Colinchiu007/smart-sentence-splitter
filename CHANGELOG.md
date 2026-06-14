@@ -1,5 +1,109 @@
 # PROJECT-012 CHANGELOG
 
+## [0.7.0] - 2026-06-14
+
+### ✨ v0.7.0 — 剧本分析 + 分镜增强 (Storyboard)
+
+#### 新增模块: ScriptAnalyzer
+
+`src/splitter/script/script_analyzer.py` — 从完整剧本文本提取：
+- **角色列表** (jieba nr 词性→人名) 
+- **故事梗概** (第一段摘要)
+- **场景/地点列表** (jieba ns 词性 + 后缀启发式)
+- **关键词表** (高频名词)
+- **场景变化检测** (地点信号词 → new scene)
+
+设计原则：零 LLM 依赖，纯规则 + jieba。无 jieba 时降级为字符启发式。
+
+#### SceneSegment 扩展
+
+| 新增字段 | 类型 | 说明 |
+|----------|------|------|
+| `characters` | List[str] | 本场出现的角色 |
+| `setting` | str | 本场地点 |
+| `mood` | str | 情绪标签 |
+| `story_phase` | str | 叙事阶段 (开头/发展/高潮/结局) |
+| `to_image_hint()` | 方法 | 生成画面提示词片段供 PROJECT-011 消费 |
+
+所有新字段有默认值，不破坏 v0.6.x 旧代码。
+
+#### 新增模块: StoryboardExporter
+
+`src/splitter/exporter/storyboard.py` — 分镜 JSON 输出格式：
+
+```json
+{
+  "story_synopsis": "小明是一个普通的高中生...",
+  "characters": [{"name": "小明"}],
+  "settings": ["超市", "学校", "公园"],
+  "total_scenes": 8,
+  "total_duration": 36.4,
+  "scenes": [
+    {
+      "scene_id": 0,
+      "text": "小明是一个普通的高中生。",
+      "duration_s": 3.6,
+      "characters": [],
+      "setting": "",
+      "mood": "",
+      "phase": "",
+      "image_hint": "小明是一个普通的高中生。, 风格:mixed",
+      "era": "mixed",
+      "scene_context": { "next_setting": "", ... }
+    }
+  ]
+}
+```
+
+#### 架构设计原则
+
+基于多 Agent 分镜理论 (参考 AI 短剧工作流)：
+
+```
+编剧 Agent (PROJECT-012)     → 剧本结构分析
+导演 Agent (PROJECT-012)     → 场景分割 + 时长计算
+提示词优化 Agent (PROJECT-011) → 分镜提示词 + 角色一致性
+```
+
+PROJECT-012 做结构分析（角色/场景/情绪/时长），PROJECT-011 做创意生成（提示词/风格/一致性）。
+
+#### 输出格式对齐
+
+分镜 JSON 可直接传给 PROJECT-011：
+```
+POST /v1/optimize/batch  ← storyboard.scenes[].image_hint
+角色一致性 ← storyboard.characters
+场景一致性 ← storyboard.settings
+```
+
+#### 📊 测试
+
+- **新增 21 个测试用例**（角色提取/场景提取/梗概/场景变化/Storyboard 序列化/集成）
+- **总计: 290 个测试用例 100% 通过 + 5 skipped** ✅
+
+#### 📁 新增文件
+
+```
+src/splitter/
+├── script/
+│   ├── __init__.py
+│   └── script_analyzer.py       # 新 (7KB)
+├── models/
+│   └── scene.py                  # 升级 (4 新字段 + to_image_hint)
+└── exporter/
+    └── storyboard.py             # 新 (2.4KB)
+
+tests/unit/
+├── test_script_analyzer.py       # 新 (12 个测试)
+└── test_storyboard.py            # 新 (9 个测试)
+
+examples/
+└── verify_storyboard.py          # 新 (实测)
+
+docs/
+└── PM-PRD-ARCH-v0.7.md           # 新 (PRD+ARCH 合并)
+```
+
 ## [0.6.1] - 2026-06-14
 
 ### ✨ v0.6.1 — PROJECT-011 桥接 (exporter)

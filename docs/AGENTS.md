@@ -8,8 +8,8 @@
 - **项目代号**: PROJECT-012
 - **目标用户**: 内容创作者 + 开发者 + AI 工作流用户
 - **核心价值**: 打通「文案→分句→字幕→逐句配图→轮播视频」自动化管线
-- **当前版本**: v0.6.1
-- **测试覆盖**: 269 个用例 100% 通过 + 5 skipped (无 LLM key)
+- **当前版本**: v0.7.0
+- **测试覆盖**: 290 个用例 100% 通过 + 5 skipped (无 LLM key)
 
 ## 🏗️ 关键架构路径
 
@@ -44,7 +44,9 @@ src/splitter/
 │   ├── xfyun_provider.py
 │   ├── ollama_provider.py
 │   └── prompts.py
-├── models/                  ← 5 个 dataclass
+├── script/                     ← v0.7 新增 (剧本分析)
+│   └── script_analyzer.py      ← 角色/场景/梗概/场景变化检测
+├── models/                  ← 5 个 dataclass (SceneSegment 扩展)
 ├── api/
 │   ├── cli.py
 │   └── rest_api.py        ← v0.5 新增 (FastAPI)
