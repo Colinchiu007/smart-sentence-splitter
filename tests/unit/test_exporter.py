@@ -19,7 +19,7 @@ class TestOptimizeRequest:
         s = sentence("今天天气真好。")
         req = exporter.to_optimize_request(s)
         assert req["prompt"] == "今天天气真好。"
-        assert req["platform"] == "mj"  # zh → mj
+        assert req["platform"] == "midjourney"  # zh → midjourney
         assert req["creative_level"] == 5
         assert req["max_length"] == 500
 
@@ -86,7 +86,7 @@ class TestEnglishMapping:
         exporter = PromptEngineExporter()
         s = sentence("Hello world.", language="en")
         req = exporter.to_optimize_request(s)
-        assert req["platform"] == "sd"
+        assert req["platform"] == "stable_diffusion"
 
 
 class TestEdgeCases:

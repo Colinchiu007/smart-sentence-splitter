@@ -54,7 +54,44 @@ tests/unit/test_subtitle_exporter.py
 tests/integration/test_prompt_engine_client.py
 examples/verify_end_to_end.py
 ```
+
+## [0.8.1] - 2026-06-14
+
+### 🔧 v0.8.1 — PROJECT-011 端到端真实验证 + 平台名修正
+
+#### 实测成功
+
+启动 PROJECT-011 (port 8013) + 真实调 /v1/optimize/batch:
+```
+输入: 7 句中文剧本 → 7 条 PROJECT-011 优化请求
+输出: 7 条 Midjourney 英文 prompt, 平均 850 tokens/条
+```
+
+**PROJECT-011 优化前后对比示例**:
+- 输入: `小明走进超市。`
+- 输出: `Xiao Ming, a young man with a friendly expression, walks confidently through the...`
+
+#### 修复
+
+- **平台名修正** (zh→midjourney, en→stable_diffusion, ja→jimeng)
+  - 原代码用 `mj`/`sd`/`niji` 简写, 与 PROJECT-011 真实枚举不匹配
+  - 修复: 7 条请求全部 200 OK (修复前 422 Unprocessable Entity)
+- **batch 端点格式**: `{requests: [...]}` 包装, 不是裸 list
+
+#### 测试
+
+- 新增 2 e2e 测试 (test_real_optimize_batch, test_real_platform_mapping)
+- **总计: 312 passed + 9 skipped (无 PROJECT-011)** ✅
+
+#### 新增文件
+
+```
+examples/verify_prompt_engine_e2e.py    # 端到端实测脚本
+tests/integration/test_prompt_engine_client.py  # +2 e2e 测试
+```
+
 ## [0.7.0] - 2026-06-14
+
 
 ### ✨ v0.7.0 — 剧本分析 + 分镜增强 (Storyboard)
 

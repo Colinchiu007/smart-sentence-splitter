@@ -66,10 +66,42 @@ class TestPromptEngineClientEndToEnd:
     )
     def test_real_optimize_one(self):
         client = PromptEngineClient()
-        req = {"prompt": "今天天气真好", "platform": "mj", "creative_level": 5}
+        req = {"prompt": "今天天气真好", "platform": "midjourney", "creative_level": 5}
         result = client.optimize(req)
         assert result["optimized_prompt"]
         assert result["tokens_used"] > 0
+
+    @pytest.mark.skipif(
+        not os.getenv("RUN_PROMPT_ENGINE_E2E"),
+        reason="需要 RUN_PROMPT_ENGINE_E2E=1 真实调用 PROJECT-011"
+    )
+    def test_real_optimize_batch(self):
+        """真实 batch 端点调用。"""
+        client = PromptEngineClient()
+        requests = [
+            {"prompt": "今天天气真好", "platform": "midjourney"},
+            {"prompt": "He walked home", "platform": "stable_diffusion"},
+        ]
+        results = client.optimize_batch(requests)
+        assert len(results) == 2
+        for r in results:
+            assert r["optimized_prompt"]
+            assert r["tokens_used"] > 0
+
+    @pytest.mark.skipif(
+        not os.getenv("RUN_PROMPT_ENGINE_E2E"),
+        reason="需要 RUN_PROMPT_ENGINE_E2E=1 真实调用 PROJECT-011"
+    )
+    def test_real_platform_mapping(self):
+        """平台名映射到真实 PROJECT-011 枚举。"""
+        from splitter.exporter.prompt_engine import PromptEngineExporter
+        from splitter.models import SentenceBlock
+        exporter = PromptEngineExporter()
+        for lang, expected in [("zh", "midjourney"), ("en", "stable_diffusion"),
+                                ("ja", "jimeng"), ("auto", "generic")]:
+            s = SentenceBlock(text="test", index=0, language=lang)
+            req = exporter.to_optimize_request(s)
+            assert req["platform"] == expected, f"{lang} → {req['platform']}"
 
 
 class TestStoryboardPipeline:

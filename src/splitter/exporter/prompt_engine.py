@@ -118,18 +118,18 @@ class PromptEngineExporter:
     def _infer_platform(self, language: str) -> str:
         """根据语言推断目标平台。
 
-        zh → mj (Midjourney)
-        en → sd (Stable Diffusion)
-        ja → niji
+        zh → midjourney (PROJECT-011 平台名)
+        en → stable_diffusion
+        ja → jimeng (日文走即梦)
         auto → generic
-        mixed → mj
+        mixed → midjourney
         """
         mapping = {
-            "zh": "mj",
-            "en": "sd",
-            "ja": "niji",
+            "zh": "midjourney",
+            "en": "stable_diffusion",
+            "ja": "jimeng",
             "auto": "generic",
-            "mixed": "mj",
+            "mixed": "midjourney",
         }
         return mapping.get(language, self.default_platform or "generic")
 

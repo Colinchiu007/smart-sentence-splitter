@@ -66,9 +66,12 @@ class PromptEngineClient:
         return self.parse_optimize_response(r.json())
 
     def optimize_batch(self, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """批量优化。"""
+        """批量优化。
+
+        PROJECT-011 /v1/optimize/batch 接收 {requests: [...]} 包装。
+        """
         s = self._get_session()
-        payload = [self.build_optimize_payload(r) for r in requests]
+        payload = {"requests": [self.build_optimize_payload(r) for r in requests]}
         r = s.post(
             f"{self.base_url}/v1/optimize/batch",
             json=payload,
