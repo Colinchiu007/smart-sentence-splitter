@@ -10,10 +10,12 @@
 
 - 🧠 **三级分句降级链** — LLM (Tier 1) → TextTiling+jieba (Tier 2) → 规则 (Tier 3)
 - 🌍 **多语言原生支持** — 中文 (jieba 增强) + 英文 (缩写+引号保护) + 中英混排路由
-- 📦 **4 种调用形态** — Python SDK / REST API / CLI / MCP Server
-- ⚙️ **全配置化** — 全部参数 YAML 可配，运行时热更新
-- 🎬 **下游友好输出** — 标准化 JSON (sentences/scenes/subtitles/era_info) 直接对接字幕/生图/视频
 - 🪶 **零依赖核心** — 仅 `pydantic` + `PyYAML`，jieba/streamlit/fastapi 全部 optional
+- 🪡 **AC 自动机用户词典** — O(n) 多模式匹配 + DAG+DP 加权合并 (FoolNLTK/LAC 复用)
+- ⚙️ **全配置化** — 全部参数 YAML 可配，运行时热更新
+- 🪡 **Postprocessor 链** — EraPostprocessor / CustomMergingProcessor 可插拔 (THULAC/HanLP 复用)
+- 🎬 **下游友好输出** — 标准化 JSON (sentences/scenes/subtitles/era_info) 直接对接字幕/生图/视频
+- 🚀 **3 模式** — `fast` / `balanced` / `precise` (LAC 复用)
 
 ## 🚀 快速开始
 
@@ -168,7 +170,7 @@ python -m pytest tests/unit/
 # 详细模式
 python -m pytest tests/ -v
 
-# 当前测试数：101 ✅
+# 当前测试数：175 ✅
 ```
 
 ## 📚 文档
@@ -202,7 +204,7 @@ src/splitter/
 
 ## 📋 版本
 
-当前版本：**v0.1.0** (2026-06-13)
+当前版本：**v0.3.0** (2026-06-13)
 
 完整历史见 [CHANGELOG.md](docs/CHANGELOG.md)
 

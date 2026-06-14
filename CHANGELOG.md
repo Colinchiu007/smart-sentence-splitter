@@ -1,5 +1,105 @@
 # PROJECT-012 CHANGELOG
 
+## [0.3.0] - 2026-06-13
+
+### ✨ v0.3 — 4 个竞品复用集成（HanLP/LAC/THULAC/FoolNLTK）
+
+#### 7 项复用功能（F1-F7）
+
+| # | 复用点 | 来源 | 改动 |
+|---|--------|------|------|
+| **F1** | **AC 自动机升级** — Match dataclass + 标准 emit 合并 | FoolNLTK `trie.py` | `languages/zh/ac.py` 重构 |
+| **F2** | **DAG+DP 加权合并** — Customization 借鉴 jieba 思路 | FoolNLTK `_mearge_user_words` | `languages/zh/custom.py` 加 `adjust_dag()` |
+| **F3** | **Lazy 模型加载** — EraDetector 按需加载 | FoolNLTK `_load_seg_model` | `pipeline.py` + `era/postprocessor.py` |
+| **F4** | **TextTiling 增强** — 短文本早退重调 | 内部调优 | tier chain 已含 |
+| **F5** | **Postprocessor 集成到 pipeline 主流** | THULAC `Postprocesser.adjustSeg` | `pipeline.split()` 自动调 chain |
+| **F6** | **EraPostprocessor** — EraDetector 包装为 postprocessor | HanLP MTL 思想 | `era/postprocessor.py` 新文件 |
+| **F7** | **mode=precise** + **LLM Tier 接口预留** | LAC 3-mode 切换 | `pipeline._apply_mode()` + `tiers/tier1_llm.py` |
+
+#### 核心实现细节
+
+**F1 (Match dataclass)**
+```python
+@dataclass
+class Match:
+    start: int
+    end: int
+    keyword: str
+    length: int = 0  # 自动计算
+```
+
+**F1 (emit 合并)**
+- BFS 构建 fail 指针时合并 `fail_node.emits | current_node.emits`
+- `search()` 直接输出当前节点 emits（不重复查 fail 链）
+- 4 个测试验证：`test_emit_merging_via_fail` / `test_emit_set_includes_overlapping`
+
+**F2 (DAG+DP 加权合并)**
+- 边类型：单字边 (1.0) / 分词边 (1 + length) / 用户词典边 (2 × length²)
+- DP 选最大权重路径
+- `adjust_dag()` 是 `adjust()` 的增强版，可与已有分词结果融合
+
+**F3 (Lazy)**
+- `_era_detector_instance = None` 在 `__init__`
+- `_get_era_detector()` 首次访问时实例化
+- 公开 `era_detector` property 保持向后兼容
+
+**F5 (Postprocessor chain)**
+- 拆分 `_handle_large_text()` 为独立方法
+- pipeline.split() 9 步：检测→兜底→mode→链选→分句→场景→字幕→**chain**→返回
+
+**F6 (EraPostprocessor)**
+- 继承 BasePostprocessor
+- `only_for_language="zh"` 过滤
+- `try/except` 保证失败不影响主流程
+
+**F7 (LLM Tier stub)**
+```python
+class LLMSplitter(BaseSentenceSplitter):
+    language = "auto"
+    tier = "tier1_llm"
+    def is_available(self) -> bool: return False  # v0.3 不实现
+    def split(self, text): raise NotImplementedError(...)
+```
+
+**F7 (mode 映射)**
+- `fast` → min_tier=3, 关闭 TextTiling
+- `balanced` → 默认（min_tier=2）
+- `precise` → min_tier=1, 开启 TextTiling
+
+#### 📊 测试
+
+- 新增: **20 个测试用例**
+  - F1 emit 合并 + Match dataclass: 4 个
+  - F2 DAG+DP 合并: 4 个
+  - F3 Lazy + F5 chain + F6 Era + F7 mode + LLM: 12 个
+- **总计: 175 个测试用例 100% 通过 ✅**
+
+#### 📁 新增文件
+
+```
+src/splitter/
+├── era/
+│   └── postprocessor.py        # 新 (EraPostprocessor)
+├── postprocessor.py             # v0.2 → v0.3 增强 (chain 集成)
+├── pipeline.py                  # 重构 (chain 集成 + lazy)
+└── tiers/
+    └── tier1_llm.py             # 新 (LLM Tier stub)
+
+tests/integration/
+└── test_v3.py                   # 新 (v0.3 集成测试 12 个)
+```
+
+#### ✨ 复用来源
+
+| 来源 | 项目 stars | 复用次数 |
+|------|----------|---------|
+| FoolNLTK | 1.7K | F1, F2, F3 |
+| HanLP | 36.4K | F6 (MTL 思想) |
+| LAC | 百度 | F7 (mode 切换) |
+| THULAC | 2.1K | F5 (postprocessor chain) |
+
+---
+
 ## [0.2.0] - 2026-06-13
 
 ### ✨ v0.2 核心升级 — TextTiling 主题分割 + 4 项竞品复用

@@ -99,8 +99,8 @@ class Customization:
         # 1. 先按匹配把全文切块
         # 2. 在匹配边界处断开
         merge_ranges = []
-        for start, end in matches:
-            merge_ranges.append((start, end))
+        for m in matches:
+            merge_ranges.append((m.start, m.end))
 
         # 排序并合并重叠区间
         merge_ranges.sort()
@@ -180,4 +180,96 @@ class Customization:
             if overlap_end > overlap_start:
                 result.append(full_text[overlap_start:overlap_end])
             cum = seg_end
+        return result
+
+    def adjust_dag(self, text: str, seg_results: Optional[List[str]] = None) -> List[str]:
+        """v0.3 新增：DAG+DP 加权合并（借鉴 FoolNLTK `_mearge_user_words`）。
+
+        同时考虑：
+        1. 用户词典匹配（AC 自动机）
+        2. 已有的分词结果（如果提供）
+
+        构造 DAG，每条边有权重，DP 选最大路径。
+
+        Args:
+            text: 原始文本
+            seg_results: 已有分词结果（None 时视为单字）
+
+        Returns:
+            合并后的分词列表
+        """
+        if not self.phrases:
+            return seg_results or list(text)
+
+        if not self._loaded:
+            self.ac.build()
+            self._loaded = True
+
+        if seg_results is None:
+            seg_results = list(text)
+
+        # 1. 收集所有候选边
+        # 边: (start, end) → weight
+        edges: Dict[Tuple[int, int], float] = {}
+
+        # 单字边
+        for i in range(len(text)):
+            edges[(i, i + 1)] = 1.0
+
+        # 分词结果边（保留作为基础）
+        cum = 0
+        for word in seg_results:
+            w_len = len(word)
+            if w_len > 0:
+                # 权重 = 1.0 + 长度
+                weight = 1.0 + w_len
+                edges[(cum, cum + w_len)] = max(edges.get((cum, cum + w_len), 0), weight)
+            cum += w_len
+
+        # 用户词典边（优先级最高，权重大于已有分词）
+        matches = self.ac.search(text, longest_only=True)
+        for m in matches:
+            # 权重 = 用户词典优先级 × 长度 × 长度（长词 + 用户词典双重加成）
+            weight = 2.0 * m.length * m.length
+            key = (m.start, m.end)
+            if key in edges:
+                edges[key] = max(edges[key], weight)
+            else:
+                edges[key] = weight
+
+        # 2. DP 选最大权重路径
+        if not edges:
+            return seg_results
+
+        # 构建邻接表
+        from collections import defaultdict
+        adj: Dict[int, List[Tuple[int, float]]] = defaultdict(list)
+        for (s, e), w in edges.items():
+            adj[s].append((e, w))
+
+        n = len(text)
+        # dp[i] = (max_score, next_index)
+        dp: Dict[int, Tuple[float, int]] = {n: (0.0, n)}
+
+        for i in range(n - 1, -1, -1):
+            if not adj[i]:
+                # 无路可走：跳过（实际不会发生，因为有单字边）
+                dp[i] = (float("-inf"), n)
+                continue
+            best = max((w + dp[e][0], e) for e, w in adj[i] if e in dp)
+            dp[i] = best
+
+        # 3. 回溯路径
+        if n not in dp or dp[0][1] == n:
+            return seg_results
+
+        result: List[str] = []
+        pos = 0
+        while pos < n:
+            next_pos = dp[pos][1]
+            if next_pos <= pos:
+                break
+            result.append(text[pos:next_pos])
+            pos = next_pos
+
         return result

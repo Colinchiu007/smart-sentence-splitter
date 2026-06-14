@@ -1,1 +1,1 @@
-"""Era detection package."""
+"""Era package - 时代检测."""

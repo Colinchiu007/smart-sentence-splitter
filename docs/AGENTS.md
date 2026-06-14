@@ -8,31 +8,39 @@
 - **项目代号**: PROJECT-012
 - **目标用户**: 内容创作者 + 开发者 + AI 工作流用户
 - **核心价值**: 打通「文案→分句→字幕→逐句配图→轮播视频」自动化管线
-- **当前版本**: v0.1.0
-- **测试覆盖**: 101 个用例 100% 通过
+- **当前版本**: v0.3.0
+- **测试覆盖**: 175 个用例 100% 通过
 
 ## 🏗️ 关键架构路径
 
 ```
 src/splitter/
-├── pipeline.py              ← 主编排入口 (SmartSentenceSplitter)
+├── pipeline.py              ← 主编排入口 (SmartSentenceSplitter) — 集成 Postprocessor chain
 ├── core/
 │   ├── base_splitter.py     ← 分句器抽象接口
 │   ├── base_tokenizer.py    ← 分词器抽象接口
 │   ├── tier_chain.py        ← 降级链编排
 │   └── language_router.py   ← 多语言路由
 ├── languages/
-│   ├── zh/                  ← 中文 (jieba)
+│   ├── zh/                  ← 中文 (jieba + ac.py + custom.py)
+│   │   ├── splitter.py      ← ChineseSplitter (EOS 窗口检测)
+│   │   ├── tokenizer.py
+│   │   ├── abbreviations.py
+│   │   ├── ac.py            ← ACAutomaton (Match dataclass)
+│   │   └── custom.py        ← Customization (adjust_dag)
 │   └── en/                  ← 英文 (空白分词)
 ├── tiers/
-│   └── tier3_rule.py        ← Tier 3 规则
-├── scene_subtitle/
-│   ├── scene_segmenter.py   ← Layer 2
-│   └── subtitle_segmenter.py ← Layer 3
-├── era/                     ← 时代检测 (仅中文)
+│   ├── tier1_llm.py         ← v0.3 stub (is_available=False)
+│   └── tier3_rule.py
+├── texttiling/              ← 主题分割算法
+├── scene_subtitle/          ← Layer 2 + 3
+├── era/
+│   ├── detector.py
+│   └── postprocessor.py     ← v0.3 EraPostprocessor (lazy)
+├── postprocessor.py         ← v0.2 → v0.3 增强 (chain 集成到 pipeline)
 ├── models/                  ← 5 个 dataclass
-├── api/cli.py               ← CLI 入口
-└── utils/                   ← 配置/序列化/语言检测
+├── api/cli.py
+└── utils/
 ```
 
 ## 📐 重要约定
@@ -78,6 +86,15 @@ src/splitter/
 5. 写测试
 6. 更新 `config/splitter.yaml` 的 `language_specific` 段
 7. 更新 README 多语言支持表格
+
+### 7. 新增 Postprocessor 流程（v0.3+）
+1. 继承 `BasePostprocessor`
+2. 实现 `adjust(result) -> result`（返回新 SplitResult 或原地修改）
+3. 实现 `is_available() -> bool`（依赖检查）
+4. 在 `SmartSentenceSplitter._init_postprocessors()` 中注册
+5. 写测试 (`tests/integration/test_v3.py` 或新文件)
+6. 失败不应影响主流程（在 chain.run() 内部 try/except）
+7. 更新 CHANGELOG
 
 ## 🧪 测试命令
 
@@ -132,29 +149,26 @@ python -c "from splitter import SmartSentenceSplitter; print('OK')"
 
 ### 🎯 当前迭代重点
 
-### v0.2 (✅ 完成)
-- TextTiling 主题分割算法（Tier 2 升级）
-- AC 自动机 + Customization 用户词典（LAC 复用）
-- EOS 标点窗口检测（HanLP 复用）
-- 后处理器统一接口（THULAC 复用）
-- 大文本兜底 + mode 切换
-- 155 个测试用例
+### v0.3 (✅ 完成)
+- AC 自动机 Match dataclass + emit 合并 (FoolNLTK 复用)
+- Customization DAG+DP 加权合并 (`adjust_dag()`)
+- Lazy EraDetector 加载
+- Postprocessor chain 集成到 pipeline 主流 (THULAC 复用)
+- EraPostprocessor（HanLP MTL 思想）
+- mode=precise + LLM Tier 接口预留 (LAC 复用)
+- 175 个测试用例
 
-### v0.3 (下一步)
-- LLM Tier 接口 + OpenAI 适配
+### v0.4 (下一步)
+- LLM Tier 实际实现 (OpenAI/xfyun 适配)
 - Tier 1 降级逻辑
 
-### v0.4 (计划)
+### v0.5 (计划)
 - REST API (FastAPI)
 - OpenAPI 文档
 
-### v0.5 (计划)
+### v0.6 (计划)
 - Streamlit 体验工作台
 - 中文 100+ 测试用例
-
-### v0.6 (计划)
-- SRT/ASS 字幕导出
-- 生图提示词生成（结合 era_info）
 
 ## 🐛 常见问题 (FAQ)
 
