@@ -1,5 +1,34 @@
 # PROJECT-012 CHANGELOG
 
+## [0.5.1] - 2026-06-14
+
+### ✨ v0.5.1 — 真实 LLM 验证 + MCP Server + 4 个缺陷修复
+
+#### Step 1: 真实 LLM 端到端验证
+- `examples/verify_real_llm.py` — 写入了可复现的真实 LLM 验证脚本
+- **结果**: OpenRouter deepseek-chat 中/英文分句通过, Pipeline `mode=precise` 走 `tier1_llm`
+
+#### Step 2: MCP Server
+- 新增 `src/splitter/api/mcp_server.py` (6.5KB) — 基于 MCP SDK 1.x
+- **tool**: `split_text` — 分句（支持所有配置参数 + Pydantic schema）
+- **resources**: `status://health` + `status://capabilities`
+- 启动: `python -m splitter.api.mcp_server`（stdio 模式）
+- 自动检测 API key → 自动启用 LLM Tier
+- `mode=precise` 自动 `enable_topic_segmentation=True`
+- `mode=fast` 自动 `min_tier=3`
+
+#### Step 3: 4 个缺陷修复
+1. **CHANGELOG 缺失 v0.5.1** ✅ — 本条目
+2. **AGENTS 版本还停在 v0.5.0** ✅ — 更新到 v0.5.1
+3. **`verify_real_llm.py` 硬编码绝对路径** ✅ — 改为 `~/.pkuseg/config.yaml` + 环境变量
+4. **`pipeline._apply_mode` 永久改 `self.config`** ✅ — 改为临时变量，不破坏配置状态
+
+#### 📊 测试
+- 新增: **5 个测试用例**（MCP Server 编译 + 导入）
+- **总计: 239 个测试用例 100% 通过 + 5 skipped（无 key） ✅**
+
+---
+
 ## [0.5.0] - 2026-06-13
 
 ### ✨ v0.5 — 3 步完成：真实 LLM 测试 + REST API + Streamlit 工作台

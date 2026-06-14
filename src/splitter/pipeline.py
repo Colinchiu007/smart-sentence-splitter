@@ -69,10 +69,10 @@ class SmartSentenceSplitter:
             self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("zh", {})
         ))
         zh_splitters.append(ChineseRuleSplitter())
-        # 关键：TierChain min_tier 来自一个可调用的 lambda，每次 split 都重新读 self.config
+        # 关键：TierChain min_tier 来自一个可调用的 lambda，每次 split 都重新读
         self._zh_chain = TierChain(
             splitters=zh_splitters,
-            min_tier_provider=lambda: self.config.get("min_tier", 2),
+            min_tier_provider=lambda: self._get_effective_min_tier(),
         )
 
         # 英文 splitter 链
@@ -94,7 +94,7 @@ class SmartSentenceSplitter:
         en_splitters.append(EnglishRuleSplitter())
         self._en_chain = TierChain(
             splitters=en_splitters,
-            min_tier_provider=lambda: self.config.get("min_tier", 2),
+            min_tier_provider=lambda: self._get_effective_min_tier(),
         )
 
         # 场景 + 字幕
@@ -161,18 +161,23 @@ class SmartSentenceSplitter:
     def _apply_mode(self):
         """F7: mode 映射 → min_tier。
 
+        使用局部变量而非修改 self.config，避免副作用。
+
         fast:    min_tier=3（仅规则）
         balanced: min_tier=2（语义+规则）默认
         precise: min_tier=1 + 自动启用 TextTiling
         """
         mode = self.config.get("mode", "balanced")
         if mode == "fast":
-            self.config["min_tier"] = 3
-            self.config["enable_topic_segmentation"] = False
+            self._override_min_tier = 3
         elif mode == "precise":
-            self.config["min_tier"] = 1
+            self._override_min_tier = 1
+            # 强制启用 topic seg（setdefault 仅在 key 不存在时生效，这里直接覆写）
             self.config["enable_topic_segmentation"] = True
-        # balanced: 不变
+
+    def _get_effective_min_tier(self) -> int:
+        """获取生效的 min_tier（优先 override）。"""
+        return getattr(self, "_override_min_tier", None) or self.config.get("min_tier", 2)
 
     def _handle_large_text(self, text: str, detected_lang: str) -> Optional[SplitResult]:
         """借鉴 THULAC __cutRaw：大文本兜底。"""

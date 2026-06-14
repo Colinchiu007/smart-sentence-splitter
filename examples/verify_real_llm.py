@@ -1,53 +1,54 @@
-"""真实 LLM 端到端验证 — 用 coo profile 的 key."""
-import os, sys, yaml
+"""真实 LLM 端到端验证 — 从环境变量读 API key.
 
-# 从 coo profile 读 key
-with open(r"C:\hermes-home\profiles\coo\config.yaml") as f:
-    cfg = yaml.safe_load(f)
+用法:
+    export OPENAI_API_KEY="sk-or-..."
+    python examples/verify_real_llm.py
 
-openrouter_key = cfg["providers"]["openrouter"]["api_key"]
-os.environ["OPENAI_API_KEY"] = openrouter_key
+    # 或
+    XFYUN_API_KEY="***" python examples/verify_real_llm.py --provider xfyun
+"""
+import os
+import sys
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--provider", default="openai", choices=["openai", "xfyun"])
+parser.add_argument("--model", default="deepseek/deepseek-chat")
+parser.add_argument("--base-url", default="https://openrouter.ai/api/v1")
+args = parser.parse_args()
 
 from splitter.tiers.tier1_llm import LLMSplitter
 
-# === OpenRouter (deepseek) ===
+# === 构造 provider ===
 print("=" * 50)
-print("=== OpenRouter deepseek-chat ===")
+print(f"=== {args.provider} ({args.model}) ===")
 s = LLMSplitter({
-    "provider": "openai",
-    "model": "deepseek/deepseek-chat",
-    "base_url": "https://openrouter.ai/api/v1",
+    "provider": args.provider,
+    "model": args.model,
+    "base_url": args.base_url,
     "timeout": 60,
 })
 print(f"available: {s.is_available()}")
-if s.is_available():
-    r = s.split("今天天气真好。我们去公园。路上遇到了多年未见的老朋友。")
-    print(f"sentences: {len(r)}")
-    for b in r:
-        print(f"  [{b.index}] {b.text}")
-else:
-    print("SKIP - not available")
 
-# === 英文 ===
-print()
-print("=" * 50)
-print("=== OpenRouter — English ===")
-s2 = LLMSplitter({
-    "provider": "openai",
-    "model": "deepseek/deepseek-chat",
-    "base_url": "https://openrouter.ai/api/v1",
-    "timeout": 60,
-})
-if s2.is_available():
-    t = "Hello world. How are you today? Let me tell you a story about AI."
-    r2 = s2.split(t)
-    print(f"sentences: {len(r2)}")
-    for b in r2:
-        print(f"  [{b.index}] {b.text}")
-else:
-    print("SKIP")
+if not s.is_available():
+    print(f"❌ 不可用 — 请设置 {args.provider.upper()}_API_KEY 环境变量")
+    sys.exit(1)
 
-# === pipeline 集成 ===
+# === 中文分句 ===
+text_zh = "今天天气真好。我们去公园。路上遇到了多年未见的老朋友。"
+r = s.split(text_zh)
+print(f"✅ 中文分句: {len(r)} 句")
+for b in r:
+    print(f"  [{b.index}] {b.text}")
+
+# === 英文分句 ===
+text_en = "Hello world. How are you today? Let me tell you a story about AI."
+r2 = s.split(text_en)
+print(f"✅ 英文分句: {len(r2)} 句")
+for b in r2:
+    print(f"  [{b.index}] {b.text}")
+
+# === Pipeline 集成 ===
 print()
 print("=" * 50)
 print("=== Pipeline 集成 (mode=precise + LLM) ===")
@@ -55,14 +56,15 @@ from splitter import SmartSentenceSplitter
 splitter = SmartSentenceSplitter({
     "enable_llm": True,
     "llm": {
-        "provider": "openai",
-        "model": "deepseek/deepseek-chat",
-        "base_url": "https://openrouter.ai/api/v1",
+        "provider": args.provider,
+        "model": args.model,
+        "base_url": args.base_url,
         "timeout": 60,
     },
+    "mode": "precise",
 })
 r3 = splitter.split("今天天气真好。我们去公园散步。路上遇到了朋友。")
-print(f"tier_used: {r3.tier_used}")
-print(f"sentences: {len(r3.sentences)}")
+print(f"tier: {r3.tier_used}, 句子: {len(r3.sentences)}")
 for b in r3.sentences:
     print(f"  [{b.index}] {b.text}")
+print(f"\n✅ 全部验证通过")

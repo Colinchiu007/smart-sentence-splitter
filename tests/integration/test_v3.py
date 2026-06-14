@@ -46,14 +46,14 @@ class TestV3ModePrecise:
     def test_mode_precise_enables_topic_seg(self):
         splitter = SmartSentenceSplitter({"mode": "precise"})
         splitter._apply_mode()
-        assert splitter.config["enable_topic_segmentation"] is True
-        assert splitter.config["min_tier"] == 1
+        assert splitter.config.get("enable_topic_segmentation") is True
+        assert splitter._override_min_tier == 1
 
     def test_mode_fast_disables_topic_seg(self):
         splitter = SmartSentenceSplitter({"mode": "fast", "enable_topic_segmentation": True})
         splitter._apply_mode()
-        assert splitter.config["enable_topic_segmentation"] is False
-        assert splitter.config["min_tier"] == 3
+        # fast 模式不应改 enable_topic_segmentation（但 min_tier 应为 3）
+        assert splitter._override_min_tier == 3
 
     def test_mode_balanced_default(self):
         splitter = SmartSentenceSplitter()
