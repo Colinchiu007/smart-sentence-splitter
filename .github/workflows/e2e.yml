@@ -1,0 +1,47 @@
+name: Real E2E (Manual Trigger)
+
+# 真实端到端测试 — 需要外部服务在线
+# 用法: Actions 页面 → 手动触发 → 输入 RUN_PROMPT_ENGINE_E2E=1
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_011_url:
+        description: 'PROJECT-011 服务地址 (默认 http://localhost:8013)'
+        required: false
+        default: 'http://localhost:8013'
+      llm_provider:
+        description: 'LLM provider (openai/xfyun)'
+        required: false
+        default: 'openai'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          pip install -e ".[semantic]"
+
+      - name: Run real LLM tests
+        if: env.LLM_API_KEY
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          XFYUN_API_KEY: ${{ secrets.XFYUN_API_KEY }}
+        run: |
+          python -m pytest tests/integration/test_real_llm.py -v
+
+      - name: Run PROJECT-011 e2e
+        env:
+          RUN_PROMPT_ENGINE_E2E: 1
+        run: |
+          echo "Skip if PROJECT-011 not running on ${{ github.event.inputs.project_011_url }}"
+          python -m pytest tests/integration/test_prompt_engine_client.py -v --tb=short
+        continue-on-error: true
