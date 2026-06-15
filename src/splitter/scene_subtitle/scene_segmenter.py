@@ -38,6 +38,13 @@ class SceneSegmenter:
             return []
 
         target_words = self.calculate_target_words()
+        has_topic_boundaries = any(s.is_topic_boundary for s in sentences)
+        # 如果有 topic 边界, 提高字数阈值避免字数切的碎片化
+        if has_topic_boundaries:
+            effective_target = target_words * 3
+        else:
+            effective_target = target_words
+
         scenes: List[SceneSegment] = []
         current_sentences: List[SentenceBlock] = []
         current_word_count = 0
@@ -46,18 +53,26 @@ class SceneSegmenter:
         for sentence in sentences:
             sentence_len = len(sentence.text)
 
-            # 决定是否需要开始新段落
+            # v0.9.10: 主题边界 → 强制新段落
+            if sentence.is_topic_boundary and not has_topic_boundaries:
+                # 没有主题边界时当作普通句子处理
+                pass
+            if sentence.is_topic_boundary and current_sentences:
+                scenes.append(self._create_scene(current_sentences[:], current_word_count, scene_id))
+                scene_id += 1
+                current_sentences = [sentence]
+                current_word_count = sentence_len
+                continue
+
+            # 字数检查
             if not current_sentences:
-                # 段落为空：必须接受
                 current_sentences.append(sentence)
                 current_word_count += sentence_len
-            elif current_word_count + sentence_len <= target_words:
-                # 未达上限，可以加入
+            elif current_word_count + sentence_len <= effective_target:
                 current_sentences.append(sentence)
                 current_word_count += sentence_len
             else:
-                # 已达上限，开始新段落
-                scenes.append(self._create_scene(current_sentences, current_word_count, scene_id))
+                scenes.append(self._create_scene(current_sentences[:], current_word_count, scene_id))
                 scene_id += 1
                 current_sentences = [sentence]
                 current_word_count = sentence_len
