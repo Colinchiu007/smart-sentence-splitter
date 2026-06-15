@@ -1,3 +1,36 @@
+## [0.9.9] - 2026-06-14
+
+### ✨ v0.9.9 — 日语分句支持 (JapaneseSplitter)
+
+#### 新增
+
+- **日语 Splitter**: `src/splitter/languages/ja/splitter.py`
+  - 按句点/感叹号/问号/换行分割
+  - 配对引号内标点保护 (「」『』（）〔〕)
+  - TierChain 集成 + 自动语言检测路由
+
+- **日语语言包架构**: `languages/ja/__init__.py` + `__init__.py`
+  - `LanguageRouter` 自动路由 `"ja" → JapaneseSplitter`
+  - `pipeline.py` 新增 `_ja_chain` TierChain
+  - `detect_language` 已有假名检测 (kana_ratio > 0.1)
+
+#### 新增文件
+
+```
+src/splitter/languages/ja/
+├── __init__.py
+└── splitter.py          # JapaneseSplitter (2.8KB)
+
+tests/unit/test_ja_splitter.py  # 7 个测试
+```
+
+#### 📊 测试
+
+- 新增 7 个日语分句测试
+- **总计: 353 passed + 9 skipped** ✅
+
+---
+
 ## [0.9.8] - 2026-06-14
 
 ### ✨ v0.9.8 — 多剧本管理面板 + 对比功能

@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import List, Tuple
 from ..languages.zh.splitter import ChineseSplitter
 from ..languages.en.splitter import EnglishSplitter
+from ..languages.ja.splitter import JapaneseSplitter
 from ..utils.language_detect import detect_language
 
 
@@ -21,6 +22,7 @@ class LanguageRouter:
         self.config = config or {}
         self.zh_splitter = ChineseSplitter(self.config.get("zh", {}))
         self.en_splitter = EnglishSplitter(self.config.get("en", {}))
+        self.ja_splitter = JapaneseSplitter(self.config.get("ja", {}))
 
     def route(self, text: str) -> Tuple[str, object]:
         """根据配置/自动检测路由到对应分句器。
@@ -40,7 +42,7 @@ class LanguageRouter:
         elif lang == "en":
             return "en", self.en_splitter
         elif lang == "ja":
-            return "ja", self.zh_splitter  # 暂用 zh 兜底，P2 再做日文
+            return "ja", self.ja_splitter
         else:  # mixed
             # 简化处理：mixed 模式下，zh splitter 处理中文部分，en 部分由 en 兜底
             return "zh", self.zh_splitter

@@ -44,6 +44,7 @@ class SmartSentenceSplitter:
         # === 对每种语言构建独立的 tier 链 ===
         from .languages.zh.splitter import ChineseSplitter
         from .languages.en.splitter import EnglishSplitter
+        from .languages.ja.splitter import JapaneseSplitter
         from .tiers.tier3_rule import ChineseRuleSplitter, EnglishRuleSplitter
         from .texttiling.splitter import TextTilingSemanticSplitter
 
@@ -94,6 +95,15 @@ class SmartSentenceSplitter:
         en_splitters.append(EnglishRuleSplitter())
         self._en_chain = TierChain(
             splitters=en_splitters,
+            min_tier_provider=lambda: self._get_effective_min_tier(),
+        )
+
+        # 日文 splitter 链 (v0.9.9)
+        ja_splitters: List[BaseSentenceSplitter] = [JapaneseSplitter(
+            self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("ja", {})
+        )]
+        self._ja_chain = TierChain(
+            splitters=ja_splitters,
             min_tier_provider=lambda: self._get_effective_min_tier(),
         )
 
@@ -286,6 +296,9 @@ class SmartSentenceSplitter:
         if detected_lang == "en":
             chain = self._en_chain
             lang_tag = "en"
+        elif detected_lang == "ja":
+            chain = self._ja_chain
+            lang_tag = "ja"
         else:
             chain = self._zh_chain
             lang_tag = detected_lang
