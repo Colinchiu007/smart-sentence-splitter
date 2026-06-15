@@ -1,5 +1,3 @@
-# PROJECT-012 — AGENTS.md
-
 > 本文件是快速入口。完整版本请参考 `docs/AGENTS.md`。
 
 ## 快速命令
@@ -24,4 +22,4 @@ python -m splitter.api.mcp_server
 - `api/mcp_server.py` — MCP Server
 
 ## 版本
-v0.5.1 (2026-06-14) — 239 测试 100% 通过
+v0.9.2 (2026-06-14) — 324 测试 100% 通过

@@ -1,6 +1,8 @@
 """Subtitle segmenter (Layer 3).
 
 将 SceneSegment 内的文本切分为 8-15 字的字幕块。
+
+v0.9.2 改动: 复用 LengthSegmenter 配对引号保护 — 不再自己实现切分。
 """
 
 from __future__ import annotations
@@ -16,12 +18,14 @@ class SubtitleSegmenter:
         self.config = config or {}
         self.min_chars = self.config.get("min_chars_per_block", 8)
         self.max_chars = self.config.get("max_chars_per_block", 15)
-        self.punctuation_priority = self.config.get("punctuation_priority", [
-            "。", "！", "？", "；", "，",
-            ".", "!", "?", ",",
-            "、", " ", "\n",
-        ])
         self.time_method = self.config.get("time_calculation_method", "proportional")
+        # v0.9.2: 复用 LengthSegmenter A 模式 (配对引号保护)
+        from .length_segmenter import LengthSegmenter
+        self._length_seg = LengthSegmenter(
+            strategy="A",
+            min_chars=self.min_chars,
+            max_chars=self.max_chars,
+        )
 
     def segment(self, scene: SceneSegment) -> List[SubtitleBlock]:
         """为单个 SceneSegment 生成字幕块列表。"""
@@ -32,52 +36,29 @@ class SubtitleSegmenter:
         if not text or not text.strip():
             return []
 
-        blocks = self._split_into_blocks(text)
+        # v0.9.2: 用 LengthSegmenter 切 (配对引号保护)
+        blocks = self._length_seg._resplit(text)
+
+        # LengthSegmenter._resplit 不会切 < max_chars 的短文本, 强制至少切一块
+        if not blocks:
+            blocks = [text]
+
+        # 后处理: 把太短的首块合并到上一块, 末尾太短合并到上一块
+        blocks = self._merge_short(blocks)
+
         return self._assign_timestamps(blocks, parent_duration, parent_id)
 
-    def _split_into_blocks(self, text: str) -> List[str]:
-        """将文本切分为字幕块。"""
-        blocks: List[str] = []
-        current = ""
-
-        for char in text:
-            current += char
-
-            # 如果遇到标点
-            if char in self.punctuation_priority:
-                if len(current) >= self.min_chars:
-                    blocks.append(current)
-                    current = ""
-                # 否则继续累积
-
-            # 强制切分（达到 max_chars）
-            if len(current) >= self.max_chars:
-                # 尝试在最近的标点处切
-                split_pos = self._find_split_position(current)
-                if split_pos > 0:
-                    blocks.append(current[:split_pos])
-                    current = current[split_pos:]
-                else:
-                    blocks.append(current)
-                    current = ""
-
-        # 处理尾部
-        if current.strip():
-            if len(current) < self.min_chars and blocks:
-                # 太小，合并到上一块
-                blocks[-1] += current
-            elif current.strip():
-                blocks.append(current)
-
-        return [b for b in blocks if b.strip()]
-
-    def _find_split_position(self, text: str) -> int:
-        """找到合适的切分位置（最近的标点/空格之后）。"""
-        # 优先在 punctuation_priority 列表中靠前的标点处切
-        for i in range(len(text) - 1, -1, -1):
-            if text[i] in self.punctuation_priority:
-                return i + 1
-        return -1
+    def _merge_short(self, blocks: List[str]) -> List[str]:
+        """合并 < min_chars 的块（除最后一块外）。"""
+        if not blocks:
+            return blocks
+        merged = [blocks[0]]
+        for b in blocks[1:]:
+            if len(merged[-1]) < self.min_chars:
+                merged[-1] = merged[-1] + b
+            else:
+                merged.append(b)
+        return [b for b in merged if b.strip()]
 
     def _assign_timestamps(
         self,

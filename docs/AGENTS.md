@@ -8,8 +8,8 @@
 - **项目代号**: PROJECT-012
 - **目标用户**: 内容创作者 + 开发者 + AI 工作流用户
 - **核心价值**: 打通「文案→分句→字幕→逐句配图→轮播视频」自动化管线
-- **当前版本**: v0.8.2
-- **测试覆盖**: 316 个用例 100% 通过 + 9 skipped (无 PROJECT-011)
+- **当前版本**: v0.9.2
+- **测试覆盖**: 324 个用例 100% 通过 + 9 skipped (无 PROJECT-011)
 
 ## 🏗️ 关键架构路径
 
@@ -184,6 +184,13 @@ python -c "from splitter import SmartSentenceSplitter; print('OK')"
 - Storyboard 全流程端到端实测
 - 312 个测试 (v0.7.1 295 + v0.8 新增 17)
 
+### v0.9 (✅ 完成)
+- 工作台四合一 (分句/字幕/分镜/提示词)
+- Context 注入 (synopsis/character/setting → PROJECT-011)
+- A 模式配对引号保护 (《》「」() 等)
+- 场景检测修复 (单字后缀误报)
+- 324 个测试 (v0.8.2 316 + v0.9.x 新增 8)
+
 ## 🐛 常见问题 (FAQ)
 
 ### Q: 修改 SentenceBlock 后输出 JSON 不一致？
@@ -203,8 +210,8 @@ A: 检查 `LanguageRouter.route()` 的分支是否覆盖新语言 + `pipeline.py
 
 ## 📚 关联文档
 
-- [PRD.md](PRD.md) — 产品需求
-- [ARCH-001-architecture.md](ARCH-001-architecture.md) — 整体架构
+- [PRD.md](../PRD.md) — 产品需求
+- [ARCHITECTURE.md](ARCHITECTURE.md) — 架构设计
 - [CHANGELOG.md](CHANGELOG.md) — 更新日志
 - [README.md](../README.md) — 项目主文档
 
