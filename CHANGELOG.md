@@ -55,7 +55,48 @@ tests/integration/test_prompt_engine_client.py
 examples/verify_end_to_end.py
 ```
 
+
+## [0.8.2] - 2026-06-14
+
+### 🚀 v0.8.2 — 性能基准 + 性能基线测试
+
+#### 性能基准结果 (examples/benchmark.py)
+
+| 场景 | 字数 | 延迟 | 吞吐量 | 内存 |
+|------|------|------|--------|------|
+| short | 56 | 14.8ms | 3,774 字/s | 0.1 MB |
+| medium | 651 | 56.5ms | 11,515 字/s | 0.2 MB |
+| long | 2,560 | 225.5ms | 11,353 字/s | 0.7 MB |
+| xlarge | 25,600 | 201.6ms | 126,974 字/s | 4.2 MB |
+
+**核心结论**:
+- 25,600 字 200ms = **12.7 万字/秒**
+- 内存线性增长, 无内存爆炸
+- 首字延迟 (预热后) 15ms
+- 冷启动 jieba 加载 ~1s
+
+#### 性能基线测试 (tests/unit/test_performance_baseline.py)
+
+4 个测试防回归:
+- 50 字 < 100ms
+- 1KB < 500ms
+- 10KB < 3s
+- split 正确性
+
+#### 📊 测试
+
+- **总计: 316 passed + 9 skipped** ✅
+
+#### 📁 新增
+
+```
+examples/benchmark.py                  # 基准脚本
+tests/unit/test_performance_baseline.py  # 4 性能基线测试
+docs/BENCHMARK.md                      # 完整报告
+```
+
 ## [0.8.1] - 2026-06-14
+
 
 ### 🔧 v0.8.1 — PROJECT-011 端到端真实验证 + 平台名修正
 
