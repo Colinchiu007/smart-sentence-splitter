@@ -50,6 +50,8 @@ LOCATION_SUFFIXES = [
     "体育馆", "图书馆", "博物馆", "电影院",
     "车站", "机场", "码头", "港口",
     "宫殿", "寺庙", "教堂", "城堡",
+    "国家", "地区", "岛屿", "沙滩", "海岸",
+    "餐厅", "饭店", "餐馆", "食堂",
 ]
 
 # 单字非人名过滤 + 多字停用词
@@ -70,6 +72,14 @@ COMMON_NOUN_FALSE_NR = {
     "大人", "孩子", "男人", "女人", "朋友", "同学",
     "顾客", "客人", "主角", "配角",
 }
+
+# 角色名不应含的后缀 (描述性文本中的片段, 非人物)
+CHARACTER_BAD_SUFFIXES = [
+    "的人", "的事", "的东西", "的地方", "的时候",
+    "的方式", "的感觉", "的味道", "的声音", "的样子",
+    "的原因", "的结果", "的问题", "的机会",
+    "的经历", "的体验", "的感受", "的故事",
+]
 
 
 class ScriptAnalyzer:
@@ -169,6 +179,8 @@ class ScriptAnalyzer:
         for cand in candidates:
             if cand in COMMON_NOUN_FALSE_NR:
                 continue
+            if any(cand.endswith(suf) for suf in CHARACTER_BAD_SUFFIXES):
+                continue
             if freq[cand] >= 2:
                 result.add(cand)
             elif cand in signal_matched:
@@ -228,6 +240,9 @@ class ScriptAnalyzer:
         for cand in chars:
             # 通用名词过滤
             if cand in COMMON_NOUN_FALSE_NR:
+                continue
+            # 描述性后缀过滤 (的人/的事等)
+            if any(cand.endswith(suf) for suf in CHARACTER_BAD_SUFFIXES):
                 continue
             if freq[cand] >= 2:
                 result.add(cand)
