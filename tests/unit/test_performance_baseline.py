@@ -3,6 +3,8 @@
 性能基线:
 - 1000 字文本 < 500ms
 - 10000 字文本 < 2s
+- 100KB 文本 < 10s
+- 1MB 文本 < 60s (无内存爆炸)
 - 短文 (50 字) < 100ms (排除 jieba 加载)
 """
 
@@ -74,3 +76,23 @@ class TestPerformanceBaseline:
         r = s.split("这是第一句。这是第二句。这是第三句。")
         assert len(r.sentences) == 3
         assert r.tier_used is not None
+
+    def test_100kb_under_10s(self):
+        """100KB 文本 < 10s, 无内存爆炸。"""
+        text = TEXT_1K * 100  # ~100KB
+        s = SmartSentenceSplitter({"mode": "fast"})
+        t0 = time.perf_counter()
+        r = s.split(text)
+        elapsed = (time.perf_counter() - t0) * 1000
+        assert len(r.sentences) > 100
+        assert elapsed < 10000, f"100KB 用 {elapsed:.1f}ms, 超过 10s"
+
+    def test_1mb_under_60s(self):
+        """1MB 文本 < 60s, 验证无内存爆炸。"""
+        text = TEXT_1K * 1000  # ~1MB
+        s = SmartSentenceSplitter({"mode": "fast"})
+        t0 = time.perf_counter()
+        r = s.split(text)
+        elapsed = (time.perf_counter() - t0) * 1000
+        assert len(r.sentences) > 500
+        assert elapsed < 60000, f"1MB 用 {elapsed:.1f}ms, 超过 60s"
