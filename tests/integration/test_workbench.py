@@ -56,3 +56,23 @@ def test_app_supports_core_features():
     # 输出
     assert "JSON" in content
     assert "download_button" in content
+
+
+def test_app_script_management():
+    """工作台支持多剧本管理 (v0.9.8)。"""
+    app_path = PROJECT_ROOT / "workbench" / "app.py"
+    content = app_path.read_text(encoding="utf-8")
+    # 多剧本管理核心元素
+    assert "st.session_state" in content
+    assert "剧本" in content and ("listbox" in content or "selectbox" in content or "radio" in content)
+    assert "保存" in content
+    assert "删除" in content or "清空" in content
+
+
+def test_app_script_comparison():
+    """工作台支持多剧本对比 (v0.9.8)。"""
+    app_path = PROJECT_ROOT / "workbench" / "app.py"
+    content = app_path.read_text(encoding="utf-8")
+    # 对比功能
+    has_comparison = "对比" in content or "差异" in content or "compare" in content.lower()
+    assert has_comparison, "工作台应有对比功能"
