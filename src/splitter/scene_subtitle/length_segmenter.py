@@ -26,9 +26,24 @@ logger = logging.getLogger(__name__)
 # 选最近的 < max_chars 的标点切
 PRIORITY_PUNCTUATION = [
     "。", "！", "？", "；",  # 强分隔（句末）
+    "》", "」", "）", "]", "】", "}",  # 配对符号右边界 (可作切分点)
     "，", "、",                  # 弱分隔（句内）
     ".", "!", "?", ";",        # 英文强分隔
     ",", ":", ";",                # 英文弱分隔
+]
+
+# 配对引号/括号 — 切分时跳过这些字符避免断在引号中间
+PAIRED_QUOTES = [
+    ("《", "》"),
+    ("「", "」"),
+    ("『", "』"),
+    ("(", ")"),
+    ("（", "）"),
+    ("[", "]"),
+    ("【", "】"),
+    ("{", "}"),
+    ("\"", "\""),
+    ("'", "'"),
 ]
 
 
@@ -170,7 +185,11 @@ class LengthSegmenter:
         return out
 
     def _resplit(self, text: str) -> List[str]:
-        """对单个长文本按字数 + 标点优先级重切。"""
+        """对单个长文本按字数 + 标点优先级重切。
+
+        配对引号处理: 如果 head 范围内的配对引号被截断 (左在 head 内, 右在 head 外),
+        优先按引号配对切, 避免断在引号中间。
+        """
         if len(text) <= self.max_chars:
             return [text]
 
@@ -178,18 +197,65 @@ class LengthSegmenter:
         remaining = text
 
         while len(remaining) > self.max_chars:
-            # 1. 在 max_chars 范围内找最右边的标点（贪心）
             head = remaining[:self.max_chars]
             split_at = self._find_split_position(head)
 
             if split_at > 0:
                 # 找到了标点位置 — 在标点处切
-                chunks.append(remaining[:split_at + 1])  # 含标点
+                chunks.append(remaining[:split_at + 1])
                 remaining = remaining[split_at + 1:]
             else:
-                # 没找到标点 — 强制按 max_chars 切
-                chunks.append(remaining[:self.max_chars])
-                remaining = remaining[self.max_chars:]
+                # 找不到标点 — 检查是否截断了配对引号
+                pair_split = self._try_paired_quote_split(remaining)
+                if pair_split is not None:
+                    cut_at, head_len = pair_split
+                    chunks.append(remaining[:cut_at + head_len])
+                    remaining = remaining[cut_at + head_len:]
+                else:
+                    # 实在没招 — 强制按 max_chars 切
+                    chunks.append(remaining[:self.max_chars])
+                    remaining = remaining[self.max_chars:]
+
+        if remaining:
+            chunks.append(remaining)
+
+        return chunks
+
+    def _try_paired_quote_split(self, remaining: str) -> Optional[tuple]:
+        """检查 remaining 中是否截断了配对引号, 返回 (cut_at, head_len) 或 None。
+
+        逻辑: 在 head = remaining[:max_chars] 范围内, 找最右的"成对左边界" (《, 「, ( 等)
+        如果该左边界在 head 之外找不到匹配的右边界 (即被截断),
+        但在 remaining 整体能找到, 则将 (left, right) 整体作为 1 块切出。
+        """
+        head = remaining[:self.max_chars]
+        for left, right in PAIRED_QUOTES:
+            # 找 head 内的所有 left
+            i = 0
+            while i < len(head):
+                l = head.find(left, i)
+                if l < 0:
+                    break
+                # 检查 head 内是否有 right
+                r_head = head.find(right, l + 1)
+                if r_head >= 0:
+                    # head 内有配对, 跳过
+                    i = r_head + 1
+                    continue
+                # head 内没 right, 看 remaining 整体
+                r_full = remaining.find(right, l + 1)
+                if r_full < 0:
+                    # remaining 也没 right, 跳过
+                    i = l + 1
+                    continue
+                # 找到了完整配对, 计算是否能在 max_chars 内放下
+                pair_len = r_full - l + 1
+                if pair_len <= self.max_chars:
+                    # 可以放下: 切为 (l 之前) + (left...right)
+                    return (l, pair_len)
+                # 配对太长, 试下一个 left
+                i = l + 1
+        return None
 
         if remaining:
             chunks.append(remaining)
@@ -199,18 +265,44 @@ class LengthSegmenter:
     def _find_split_position(self, head: str) -> int:
         """在 head 范围内找最合适的切分点。
 
-        策略: 优先级标点表（从高到低），找每个标点的最右出现位置。
+        策略:
+        1. 配对引号/括号 (《》, 「」, () 等): 仅当**配对**在 head 内时锁定
+        2. 单边的左/右引号: 视为可切分点
+        3. 在可切区域里, 按优先级标点表找最右的标点
 
         Returns:
             切分点 index (含标点), 0 表示没找到
         """
         if not self.prefer_punctuation:
-            # 不优先标点 — 强制按 max_chars-1 切
             return self.max_chars - 1
 
+        # 标记成对引号内的不可切区段
+        locked = [False] * len(head)
+        for left, right in PAIRED_QUOTES:
+            i = 0
+            while i < len(head):
+                l = head.find(left, i)
+                if l < 0:
+                    break
+                r = head.find(right, l + 1)
+                # 只有**配对在 head 内**才锁定
+                if r < 0 or r >= self.max_chars:
+                    i = l + 1
+                    continue
+                for j in range(l, r + 1):
+                    locked[j] = True
+                i = r + 1
+
+        # 在 unlocked 区域找最右的优先级标点
+        best_pos = 0
         for punct in self.priority_punctuation:
-            # 找最右的标点（不超 max_chars 范围）
-            pos = head.rfind(punct)
-            if pos > 0:
-                return pos
+            for pos in range(len(head) - 1, -1, -1):
+                if locked[pos]:
+                    continue
+                if head[pos] == punct and pos < self.max_chars:
+                    if pos > best_pos:
+                        best_pos = pos
+                    break
+            if best_pos > 0:
+                return best_pos
         return 0

@@ -133,6 +133,31 @@ class TestLengthStrategyA:
         for r in result:
             assert len(r.text) <= 15, f"块超长: {r.text!r}"
 
+    def test_paired_quote_respected(self):
+        """A 模式应保护配对引号不被截断。"""
+        seg = LengthSegmenter(strategy="A", min_chars=3, max_chars=15)
+        text = "正如近期热映的潮语电影《给阿嬷的情书》所展现的"
+        result = seg.segment([make_sentence(text, 0)])
+        # 引号应完整保留在第一块
+        assert len(result) == 2
+        assert "《" in result[0].text and "》" in result[0].text
+        assert "《" not in result[1].text  # 不应悬空
+
+    def test_paired_quote_english(self):
+        seg = LengthSegmenter(strategy="A", min_chars=3, max_chars=10)
+        text = '我是"小李"和"小王"。我们一起去公园。'
+        result = seg.segment([make_sentence(text, 0)])
+        # 第一块应包含完整英文引号
+        assert '"小李"' in result[0].text or '"小王"' in result[0].text
+
+    def test_multiple_paired_quotes(self):
+        seg = LengthSegmenter(strategy="A", min_chars=3, max_chars=10)
+        text = "《给阿嬷》的《情书》很好看。"
+        result = seg.segment([make_sentence(text, 0)])
+        # 每对引号应完整
+        for chunk in result:
+            assert chunk.text.count("《") == chunk.text.count("》")
+
     def test_a_marks_strategy_in_block(self):
         seg = LengthSegmenter(strategy="A", min_chars=3, max_chars=15)
         result = seg.segment([make_sentence("今天天气真好，阳光明媚", 0)])
