@@ -128,6 +128,7 @@ class TestOpenAPIDocs:
         schema = r.json()
         assert "paths" in schema
         assert "/v1/split" in schema["paths"]
+        assert "/v1/split/batch" in schema["paths"]
         assert "/health" in schema["paths"]
         assert "/capabilities" in schema["paths"]
         assert "/v1/info" in schema["paths"]
@@ -135,3 +136,52 @@ class TestOpenAPIDocs:
     def test_swagger_ui_available(self, client):
         r = client.get("/docs")
         assert r.status_code == 200
+
+
+class TestSplitBatch:
+    """POST /v1/split/batch — 批量接口 (v0.9.6)."""
+
+    def test_batch_two_texts(self, client):
+        r = client.post("/v1/split/batch", json={
+            "texts": [
+                "今天天气真好。我们去公园。",
+                "Hello world. How are you?",
+            ],
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert "results" in data
+        assert len(data["results"]) == 2
+        assert data["results"][0]["language"] == "zh"
+        assert data["results"][1]["language"] == "en"
+
+    def test_batch_empty(self, client):
+        r = client.post("/v1/split/batch", json={"texts": []})
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["results"]) == 0
+
+    def test_batch_with_config(self, client):
+        r = client.post("/v1/split/batch", json={
+            "texts": ["测试文本。"],
+            "config": {"mode": "fast"},
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["results"]) == 1
+
+    def test_batch_missing_texts(self, client):
+        r = client.post("/v1/split/batch", json={})
+        assert r.status_code == 422
+
+    def test_batch_performance(self, client):
+        """10 段文本应 < 5s."""
+        texts = ["今天天气真好。" * 10 for _ in range(10)]
+        import time
+        t0 = time.time()
+        r = client.post("/v1/split/batch", json={"texts": texts})
+        elapsed = time.time() - t0
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["results"]) == 10
+        assert elapsed < 5.0, f"batch too slow: {elapsed:.2f}s"

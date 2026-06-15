@@ -22,4 +22,4 @@ python -m splitter.api.mcp_server
 - `api/mcp_server.py` — MCP Server
 
 ## 版本
-v0.9.5 (2026-06-14) — 330 测试 100% 通过
+v0.9.6 (2026-06-14) — 335 测试 100% 通过

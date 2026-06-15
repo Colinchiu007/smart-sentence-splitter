@@ -299,10 +299,11 @@ max_input_length: 50000         # 大文本分块阈值
 
 ### REST API (FastAPI)
 ```
-GET  /health              → {"status": "ok", "version": "0.9.1"}
-GET  /version             → {"version": "0.9.1", "build": "..."}
+GET  /health              → {"status": "ok", "version": "0.9.6"}
+GET  /version             → {"version": "0.9.6", "build": "..."}
 GET  /config              → 当前配置
-POST /split               → SplitResult JSON
+POST /split               → SplitResult JSON (单文本)
+POST /split/batch         → {"results": [SplitResult, ...]} (多文本批量, v0.9.6)
 ```
 
 ### CLI

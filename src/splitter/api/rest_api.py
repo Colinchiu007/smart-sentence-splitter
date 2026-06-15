@@ -4,6 +4,7 @@
 - GET  /health          — 健康检查
 - GET  /capabilities    — 能力声明 (tiers/languages/modes)
 - POST /v1/split        — 文本分句
+- POST /v1/split/batch  — 批量分句 (v0.9.6)
 - GET  /v1/info         — 版本 + 配置信息
 
 启动:
@@ -104,6 +105,17 @@ class InfoResponse(BaseModel):
     topic_segmentation_enabled: bool
 
 
+class SplitBatchRequest(BaseModel):
+    """POST /v1/split/batch 请求体 (v0.9.6)."""
+    texts: List[str] = Field(..., min_length=0, description="待分句的文本列表")
+    config: Optional[Dict[str, Any]] = Field(default=None, description="统一配置覆盖")
+
+
+class SplitBatchResponse(BaseModel):
+    """POST /v1/split/batch 响应体 (v0.9.6)."""
+    results: List[SplitResponse]
+
+
 # === FastAPI app ===
 
 app = FastAPI(
@@ -191,7 +203,6 @@ def info():
 @app.post("/v1/split", response_model=SplitResponse)
 def split(req: SplitRequest):
     """POST /v1/split — 核心分句端点。"""
-    # 构造配置
     config: Dict[str, Any] = {}
     if req.config:
         config.update(req.config)
@@ -206,17 +217,51 @@ def split(req: SplitRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Config error: {e}")
 
-    # 分句
     try:
         result: SplitResult = splitter.split(req.text)
     except NotImplementedError as e:
-        # LLM Tier 未配置 key
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Split error: {e}")
 
-    # 转换响应
     return _to_response(result, req)
+
+
+@app.post("/v1/split/batch", response_model=SplitBatchResponse)
+def split_batch(req: SplitBatchRequest):
+    """POST /v1/split/batch — 批量分句 (v0.9.6)."""
+    if not req.texts:
+        return SplitBatchResponse(results=[])
+
+    # 构造统一配置
+    config: Dict[str, Any] = {}
+    if req.config:
+        config.update(req.config)
+
+    try:
+        splitter = SmartSentenceSplitter(config)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Config error: {e}")
+
+    results: List[SplitResponse] = []
+    for text in req.texts:
+        if not text.strip():
+            # 空文本跳过, 保持索引对应
+            results.append(SplitResponse(
+                text_length=0, language="", tier_used="",
+                total_duration=0.0, total_scenes=0,
+                sentences=[], scenes=[], config_snapshot={},
+            ))
+            continue
+        try:
+            result = splitter.split(text)
+            # 构造一个最小 SplitRequest 给 _to_response (仅用于 text_length)
+            dummy_req = SplitRequest(text=text)
+            results.append(_to_response(result, dummy_req))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Split error for text #{len(results)}: {e}")
+
+    return SplitBatchResponse(results=results)
 
 
 def _to_response(result: SplitResult, req: SplitRequest) -> SplitResponse:
