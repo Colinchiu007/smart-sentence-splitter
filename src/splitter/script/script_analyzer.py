@@ -1,7 +1,7 @@
-"""ScriptAnalyzer — 剧本分析器 (v0.7 新增).
+"""ScriptAnalyzer — 剧本分析器 (v0.7 新增, v0.9.5 增强).
 
 从完整剧本文本提取:
-- 角色列表 (人名 → jieba nr tag)
+- 角色列表 (人名 → jieba nr tag + 信号词 + 频率阈值)
 - 故事梗概 (第一段)
 - 地点/场景列表 (地名实体)
 - 关键词表 (高频名词)
@@ -16,14 +16,26 @@ from __future__ import annotations
 from typing import List, Dict, Any, Optional, Set
 import re
 import logging
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
-# 场景切换信号词
+# 角色信号词 (跟在人名后面的动作/说话词)
+CHARACTER_SIGNAL_WORDS = [
+    "说", "走", "去", "来", "看", "跑",
+    "喊", "叫", "问", "答",
+]
+
+# 场景切换信号词 — 也用于角色提取
 LOCATION_TRANSITION_VERBS = [
     "走进", "来到", "回到", "离开", "进入", "走出",
     "跑到", "冲向", "赶往", "前往", "返回", "到达",
     "走出", "踏入", "跨入", "转入",
+]
+
+# 2字信号词 (角色后跟"走进", "离开"等, 也说明这是角色)
+CHARACTER_TRANSITION_VERBS = LOCATION_TRANSITION_VERBS + [
+    "打开", "关上", "坐到", "站在", "看着", "听到",
 ]
 
 # 地点后缀词（多字明确地点词，避免单字后缀误匹配）
@@ -40,8 +52,24 @@ LOCATION_SUFFIXES = [
     "宫殿", "寺庙", "教堂", "城堡",
 ]
 
-# 单字非人名过滤
+# 单字非人名过滤 + 多字停用词
 STOP_NAMES = {"你", "我", "他", "她", "它", "们", "人", "谁", "这", "那"}
+STOP_MULTI_WORDS = {"我们", "你们", "他们", "她们", "它们", "自己", "大家", "别人"}
+
+# 小X/阿X/老X 模式已够, 以下是额外禁止开头的过滤
+BAD_CHAR_STARTS = {
+    "了", "的", "把", "被", "将", "从", "到", "去", "在",
+    "又", "再", "才", "就", "是", "很", "太", "还", "已",
+    "正在", "已经", "然后", "后来", "终于",
+    "放学", "出发", "回来", "出去", "进来",
+}
+
+# 特定语境下的"角色误判" — 这些词即使被 jieba 标记为 nr 也不应该保留
+COMMON_NOUN_FALSE_NR = {
+    "老师", "学生", "医生", "护士", "警察", "店员",
+    "大人", "孩子", "男人", "女人", "朋友", "同学",
+    "顾客", "客人", "主角", "配角",
+}
 
 
 class ScriptAnalyzer:
@@ -68,13 +96,15 @@ class ScriptAnalyzer:
             "key_terms": key_terms,
         }
 
-    # ===== 角色提取 =====
+    # ===== 角色提取 (增强版) =====
 
     def extract_characters(self, text: str) -> List[str]:
         """提取角色名列表。
 
-        用 jieba 词性标注提取 nr (人名), 去重 + 过滤停用词。
-        无 jieba 时: 用正则找"xx走"/"xx说"模式的 2-3 字词。
+        策略:
+        1. 收集候选 (jieba nr / 小X / 信号词 / 过渡词)
+        2. 去重 + 过滤停用词 + 过滤通用名词
+        3. 频率阈值: 出现≥2次 或 有信号词匹配
         """
         if not text or not text.strip():
             return []
@@ -83,27 +113,131 @@ class ScriptAnalyzer:
         return self._extract_characters_fallback(text)
 
     def _extract_characters_jieba(self, text: str) -> List[str]:
+        """用 jieba 词性标注 + 信号词增强 + 频率阈值提取角色。"""
         from jieba import posseg as pseg
-        chars: Set[str] = set()
+        from collections import Counter
+
+        candidates: Set[str] = set()
+        signal_matched: Set[str] = set()
+
+        # Step 1: jieba nr 标签
         words = pseg.cut(text)
         for word, flag in words:
-            if flag.startswith("nr") and len(word) >= 2 and word not in STOP_NAMES:
-                chars.add(word)
-        return sorted(chars)
+            if flag.startswith("nr") and len(word) >= 2 and word not in STOP_NAMES and word not in STOP_MULTI_WORDS:
+                if word not in COMMON_NOUN_FALSE_NR:
+                    candidates.add(word)
+
+        # Step 2: 小X / 阿X / 老X 模式 (jieba nr 常遗漏昵称)
+        for m in re.finditer(r'(?:[小阿老])([\u4e00-\u9fff])', text):
+            name = m.group(0)
+            if len(name) >= 2 and name not in STOP_NAMES and name not in STOP_MULTI_WORDS and name not in COMMON_NOUN_FALSE_NR:
+                candidates.add(name)
+
+        # Step 3: 信号词前人名 (说/走/去/来等, 一字节信号词)
+        # 注意: 限制捕获2-3字, 避免"红走进来"→"红走进"等假阳性
+        for sig in CHARACTER_SIGNAL_WORDS:
+            pattern = rf'([\u4e00-\u9fff]{{2,3}})(?:{re.escape(sig)})'
+            for m in re.finditer(pattern, text):
+                name = m.group(1)
+                if name not in STOP_NAMES and not any(
+                    name.startswith(bs) for bs in BAD_CHAR_STARTS
+                ):
+                    candidates.add(name)
+                    signal_matched.add(name)
+
+        # Step 4: 过渡动词前人名 (走进/离开/打开等, 双字节动词)
+        for verb in CHARACTER_TRANSITION_VERBS:
+            pattern = rf'([\u4e00-\u9fff]{{2,4}})(?:{re.escape(verb)})'
+            for m in re.finditer(pattern, text):
+                name = m.group(1)
+                if name not in STOP_NAMES and not any(
+                    name.startswith(bs) for bs in BAD_CHAR_STARTS
+                ):
+                    candidates.add(name)
+                    signal_matched.add(name)
+
+        # Step 5: 频率阈值 — 统计全文出现次数
+        freq = Counter()
+        for cand in candidates:
+            freq[cand] = text.count(cand)
+
+        # 保留规则:
+        # - 出现≥2次 或
+        # - 有信号词匹配 或
+        # - 小X/阿X/老X模式 (保留2字以上昵称, 虽然可能含"小吃"误报)
+        result: Set[str] = set()
+        for cand in candidates:
+            if cand in COMMON_NOUN_FALSE_NR:
+                continue
+            if freq[cand] >= 2:
+                result.add(cand)
+            elif cand in signal_matched:
+                result.add(cand)
+            elif re.match(r'^[小阿老]', cand) and len(cand) >= 2:
+                result.add(cand)
+
+        return sorted(result)
+
+    @staticmethod
+    def _get_bad_starts() -> Set[str]:
+        """获取非人名开头词表。"""
+        return BAD_CHAR_STARTS.copy()
 
     def _extract_characters_fallback(self, text: str) -> List[str]:
-        """无 jieba 时: 提取句首 2-3 字的名词 (启发式)。"""
+        """无 jieba 时: 句首启发式 + 小X模式 + 频率。"""
         chars: Set[str] = set()
+        signal_matched: Set[str] = set()
         sentences = re.split(r'[。！？；.!?;]', text)
-        for s in sentences:
-            s = s.strip()
-            if not s:
+
+        # 1) 句首 + 信号词 (一字节, 限制捕获2-3字)
+        for sig in CHARACTER_SIGNAL_WORDS:
+            pattern = rf'^([\u4e00-\u9fff]{{2,3}}){re.escape(sig)}'
+            for s in sentences:
+                s = s.strip()
+                if not s:
+                    continue
+                match = re.match(pattern, s)
+                if match and match.group(1) not in STOP_NAMES and match.group(1) not in STOP_MULTI_WORDS:
+                    chars.add(match.group(1))
+                    signal_matched.add(match.group(1))
+
+        # 2) 句首 + 过渡动词 (双字节)
+        for verb in CHARACTER_TRANSITION_VERBS:
+            pattern = rf'^([\u4e00-\u9fff]{{2,4}}){re.escape(verb)}'
+            for s in sentences:
+                s = s.strip()
+                if not s:
+                    continue
+                match = re.match(pattern, s)
+                if match and match.group(1) not in STOP_NAMES and match.group(1) not in STOP_MULTI_WORDS:
+                    chars.add(match.group(1))
+                    signal_matched.add(match.group(1))
+
+        # 3) 小X / 阿X 模式
+        for m in re.finditer(r'(?:[小阿老])([\u4e00-\u9fff])', text):
+            name = m.group(0)
+            if len(name) >= 2 and name not in STOP_NAMES and name not in STOP_MULTI_WORDS:
+                chars.add(name)
+
+        # 4) 频率过滤
+        freq = Counter()
+        for cand in chars:
+            freq[cand] = text.count(cand)
+
+        result: Set[str] = set()
+        for cand in chars:
+            # 通用名词过滤
+            if cand in COMMON_NOUN_FALSE_NR:
                 continue
-            # 句首 2-3 字可能的人名
-            match = re.match(r'^([\u4e00-\u9fff]{2,4})[说走看跑问叫喊]', s)
-            if match and match.group(1) not in STOP_NAMES:
-                chars.add(match.group(1))
-        return sorted(chars)
+            if freq[cand] >= 2:
+                result.add(cand)
+            elif cand in signal_matched:
+                result.add(cand)
+            # 小X模式 (2字以上昵称, 保留)
+            elif re.match(r'^[小阿老]', cand) and len(cand) >= 2:
+                result.add(cand)
+
+        return sorted(result)
 
     # ===== 梗概提取 =====
 
@@ -111,7 +245,6 @@ class ScriptAnalyzer:
         """从文本第一段提取梗概。"""
         if not text or not text.strip():
             return ""
-        # 按双换行分割段落
         paragraphs = re.split(r'\n\s*\n', text.strip())
         first = paragraphs[0].strip().replace('\n', '')
         if len(first) <= max_chars:
@@ -123,17 +256,14 @@ class ScriptAnalyzer:
     def extract_settings(self, text: str) -> List[str]:
         """提取地点/场景名称。"""
         settings: Set[str] = set()
-        # 使用 jieba ns 标签
         if self._jieba_available:
             from jieba import posseg as pseg
             words = pseg.cut(text)
             for word, flag in words:
                 if flag.startswith("ns") and len(word) >= 2 and word not in STOP_NAMES:
                     settings.add(word)
-        # jieba ns 不总能覆盖, 用后缀补充 — 只加文本中实际出现的
         for suffix in LOCATION_SUFFIXES:
-            # 后缀本身在文本中独立出现
-            if len(suffix) >= 2 and suffix in text:
+            if suffix in text:
                 settings.add(suffix)
             # 带前导字的组合地点（前面不能是中文，避免截断完整词汇）
             pattern = f'(?<![\u4e00-\u9fff])([\u4e00-\u9fff]{{1,4}}{re.escape(suffix)})'
@@ -143,92 +273,69 @@ class ScriptAnalyzer:
                     settings.add(loc)
         return sorted(settings)
 
+    @staticmethod
+    def _is_valid_location(loc: str) -> bool:
+        """过滤非地点匹配。"""
+        bad_starts = {
+            '这', '那', '哪', '各', '某', '全', '整', '同',
+            '大', '小', '老', '新', '旧', '前', '后', '左', '右',
+            '东', '西', '南', '北', '上', '下', '里', '外',
+            '有', '没', '在', '是', '的', '了', '着', '过',
+            '我', '你', '他', '她', '它', '们',
+            '被', '把', '将', '从', '向', '往', '对', '用',
+            '然后', '最后', '之后', '以前', '以后',
+        }
+        if len(loc) <= 1:
+            return False
+        first_char = loc[0]
+        if first_char in bad_starts or first_char in bad_starts:
+            return False
+        for bs in bad_starts:
+            if loc.startswith(bs):
+                return False
+        return True
+
     # ===== 关键词提取 =====
 
-    def extract_key_terms(self, text: str, top_n: int = 20) -> List[str]:
-        """提取高频关键词（≥2 字名词）。"""
-        import collections
+    def extract_key_terms(self, text: str) -> List[str]:
+        """提取高频关键词。"""
         if not self._jieba_available:
             return []
         import jieba
         words = jieba.lcut(text)
-        counter = collections.Counter(
-            w for w in words if len(w) >= 2 and w not in STOP_NAMES
-        )
-        return [w for w, _ in counter.most_common(top_n)]
+        # 过滤停用词 + 短词
+        filtered = [
+            w for w in words
+            if len(w) >= 2
+            and w not in STOP_NAMES
+            and not any(w.startswith(bs) for bs in BAD_CHAR_STARTS)
+        ]
+        freq = Counter(filtered)
+        return [w for w, _ in freq.most_common(10)]
 
     # ===== 场景变化检测 =====
 
-    def detect_scene_changes(
-        self, sentences: List[str]
-    ) -> List[Dict[str, Any]]:
-        """检测场景变化点。
-
-        Returns:
-            List of {sentence_idx, location, change_type}
-        """
-        changes: List[Dict[str, Any]] = []
-        current_location = ""
-
+    def detect_scene_changes(self, sentences: List) -> List[Dict]:
+        """检测场景切换点。"""
+        changes = []
         for i, sentence in enumerate(sentences):
-            detected_location = self._detect_location(sentence)
-            if detected_location and detected_location != current_location:
-                changes.append({
-                    "sentence_idx": i,
-                    "location": detected_location,
-                    "change_type": "location",
-                })
-                current_location = detected_location
+            text = sentence.text if hasattr(sentence, 'text') else sentence
+            location = self._detect_location(text)
+            if location:
+                changes.append({"sentence_idx": i, "location": location})
         return changes
 
     def _detect_location(self, sentence: str) -> Optional[str]:
         """检测单句中是否有地点变化。"""
-        # 1. 先找信号词
         for verb in LOCATION_TRANSITION_VERBS:
             if verb in sentence:
                 after = sentence.split(verb, 1)[1]
-                # 跳过语气助词 (了, 着, 过, 的)
                 while after and after[0] in "了着过的":
                     after = after[1:]
                 for suffix in LOCATION_SUFFIXES:
                     idx = after.find(suffix)
                     if idx >= 0:
-                        # 取信号词后到 suffix 结束
                         loc = after[:idx + len(suffix)]
-                        # 过滤明显不是地名的
                         if self._is_valid_location(loc):
                             return loc
-        # 2. 没有信号词: 看句中有无独立出现的地名
-        for suffix in LOCATION_SUFFIXES:
-            idx = sentence.find(suffix)
-            if idx >= 0:
-                # 取后缀前 2-3 字
-                start = max(0, idx - 3)
-                loc = sentence[start:idx + len(suffix)]
-                if self._is_valid_location(loc):
-                    return loc
         return None
-
-    def _is_valid_location(self, loc: str) -> bool:
-        """检查地点字符串是否合理。"""
-        loc = loc.strip()
-        if len(loc) < 2 or len(loc) > 8:
-            return False
-        # 必须以后缀结尾
-        if not any(loc.endswith(s) for s in LOCATION_SUFFIXES):
-            return False
-        # 过滤动词/介词开头
-        bad_starts = {"了", "的", "把", "被", "将", "从", "到", "去", "在",
-                       "又", "再", "才", "就", "是", "很", "太", "还", "已",
-                       "正在", "已经", "然后", "后来", "终于", "后来", "后又",
-                       "放学", "出发", "回来", "出去", "进来",
-                       "小明", "小红", "小王", "小李", "小张", "老王", "老李",
-                       "他", "她", "它", "你", "我", "们"}
-        for bs in bad_starts:
-            if loc.startswith(bs):
-                return False
-        # 过滤以地点信号词开头的
-        for verb in LOCATION_TRANSITION_VERBS:
-            if loc.startswith(verb):
-                return False
-        return True

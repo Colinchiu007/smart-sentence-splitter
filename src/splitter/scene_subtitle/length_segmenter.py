@@ -89,6 +89,21 @@ class LengthSegmenter:
         self.priority_punctuation = priority_punctuation or PRIORITY_PUNCTUATION
         self.warnings: List[str] = []
 
+    def split_text(self, text: str) -> List[str]:
+        """公开接口: 按字数 + 标点优先级 + 配对引号保护切分文本。
+
+        Args:
+            text: 要切分的文本
+
+        Returns:
+            切分后的文本块列表 (strategy=A 时重切, B/off 时返回 [text])
+        """
+        if self.strategy == "off":
+            return [text] if text else []
+        if self.strategy == "B":
+            return [text] if text else []
+        return self._resplit(text)
+
     def segment(
         self, sentences: List[SentenceBlock]
     ) -> List[SentenceBlock]:

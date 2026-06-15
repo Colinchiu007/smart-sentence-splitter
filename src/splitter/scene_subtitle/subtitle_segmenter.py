@@ -37,7 +37,7 @@ class SubtitleSegmenter:
             return []
 
         # v0.9.2: 用 LengthSegmenter 切 (配对引号保护)
-        blocks = self._length_seg._resplit(text)
+        blocks = self._length_seg.split_text(text)
 
         # LengthSegmenter._resplit 不会切 < max_chars 的短文本, 强制至少切一块
         if not blocks:
