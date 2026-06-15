@@ -179,10 +179,12 @@ python -m pytest tests/ -v
 
 ## 📚 文档
 
-- [PRD.md](docs/PRD.md) — 产品需求文档
-- [ARCH-001-architecture.md](docs/ARCH-001-architecture.md) — 整体架构
-- [CHANGELOG.md](docs/CHANGELOG.md) — 更新日志
-- [AGENTS.md](docs/AGENTS.md) — AI Agent 开发指南
+- [使用指南 (AI/开发者)](docs/USAGE_GUIDE.md) — SDK/REST/CLI/MCP/Docker
+- [产品需求](PRD.md)
+- [架构设计](docs/ARCHITECTURE.md)
+- [AI Agent 开发指南](docs/AGENTS.md)
+- [更新日志](CHANGELOG.md)
+- [性能基准](docs/BENCHMARK.md)
 
 ## 🛠️ 开发
 
