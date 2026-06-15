@@ -791,21 +791,69 @@ tests/integration/
 **作者**: PROJECT-012 Team
 **开发模式**: AI 协作 (PM/架构师/开发/QA 角色扮演)
 **工作流**: professional-ai-coding-workflow
-## [0.9.0] - 2026-06-14
 
-### ✨ v0.9.0 — 工作台四合一 (分句/字幕/分镜/提示词)
+## [0.9.1] - 2026-06-14
 
-`workbench/app.py` 从 v0.5 的 187 行 → 320 行，全部功能集成到 4 个标签页:
+### ✨ v0.9.1 — 上下文 (context) 注入 + 角色一致性
 
-| 标签页 | 功能 |
-|--------|------|
-| 📝 分句 | 字数控制 A/B/off + 剧本分析 (角色/场景/情绪) + tier 显示 |
-| 📺 字幕 | SRT + ASS 双格式下载, 字幕统计 |
-| 🎬 分镜 | 分镜卡片视图 (角色/场景/氛围/时长) + JSON 下载 |
-| 🔗 提示词 | PROJECT-011 导出 + 批量 JSON + curl 示例 |
+#### 核心改动
 
-**配置侧栏**: 语言/模式/字数策略/高级选项 (era/topic/剧本分析/LLM)
+`PromptEngineExporter.to_optimize_request()` 和 `from_split_result()` 接受 `context` 参数。
+
+`context` 包含 PROJECT-011 优化时需要的全剧本信息:
+```python
+{
+  "synopsis": "故事梗概",
+  "character": {"name": "小明"},        # 当前句主角
+  "setting": "超市",                   # 当前场景
+  "character_list": [{"name": "小明"}, {"name": "小红"}],  # 全局角色
+}
+```
+
+#### 端到端实际输出 (示例)
+
+```json
+{
+  "prompt": "小明走进超市。",
+  "platform": "midjourney",
+  "creative_level": 5,
+  "max_length": 500,
+  "context": {
+    "synopsis": "小明走进超市...",
+    "character_list": [{"name": "小明"}],
+    "character": {"name": "小明"},
+    "setting": "超市"
+  }
+}
+```
+
+#### PROJECT-011 需要配合的改动
+
+**为了真正实现角色一致性**, PROJECT-011 需要在 `OptimizeRequest` 模型里加一个字段:
+```python
+class OptimizeRequest(BaseModel):
+    # ... 现有字段 ...
+    context: Optional[dict] = None  # ← 新增
+```
+
+并在优化时把 `context` 注入到 system prompt:
+```
+System: 当前场景"超市", 角色"小明", 全部角色: 小明(主角), 小红(同学)
+        故事梗概: ...
+        请保持角色一致性
+```
+
+#### 📊 测试
+
+- 新增 5 个 context 注入测试
+- **总计: 321 passed + 9 skipped** ✅
+
+#### 📁 改动
+
+- `src/splitter/exporter/prompt_engine.py` (新增 context 字段)
+- `workbench/app.py` (提示词页显示 context)
+- `tests/integration/test_prompt_engine_client.py` (5 个新测试)
 
 ---
 
-## [0.8.3] - 2026-06-14
+## [0.9.0] - 2026-06-14

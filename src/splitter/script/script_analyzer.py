@@ -26,16 +26,18 @@ LOCATION_TRANSITION_VERBS = [
     "走出", "踏入", "跨入", "转入",
 ]
 
-# 地点后缀词
+# 地点后缀词（多字明确地点词，避免单字后缀误匹配）
 LOCATION_SUFFIXES = [
-    "里", "外", "上", "下", "前", "后",
     "超市", "商店", "学校", "医院", "公园", "广场",
-    "家", "公司", "办公室", "房间", "厨房", "卧室",
-    "街道", "马路", "小区", "大楼", "楼",
+    "公司", "办公室", "房间", "厨房", "卧室",
+    "街道", "马路", "小区", "大楼",
     "餐厅", "饭店", "咖啡馆", "酒吧",
-    "森林", "河边", "山上", "海边",
+    "森林", "山上", "河边", "海边",
     "城市", "农村", "小镇", "村庄",
     "世界", "战场", "基地", "避难所",
+    "体育馆", "图书馆", "博物馆", "电影院",
+    "车站", "机场", "码头", "港口",
+    "宫殿", "寺庙", "教堂", "城堡",
 ]
 
 # 单字非人名过滤
@@ -133,8 +135,8 @@ class ScriptAnalyzer:
             # 后缀本身在文本中独立出现
             if len(suffix) >= 2 and suffix in text:
                 settings.add(suffix)
-            # 带前导字的组合地点
-            pattern = rf'([\u4e00-\u9fff]{{1,4}}{suffix})'
+            # 带前导字的组合地点（前面不能是中文，避免截断完整词汇）
+            pattern = f'(?<![\u4e00-\u9fff])([\u4e00-\u9fff]{{1,4}}{re.escape(suffix)})'
             for m in re.finditer(pattern, text):
                 loc = m.group(1)
                 if self._is_valid_location(loc):
@@ -185,6 +187,9 @@ class ScriptAnalyzer:
         for verb in LOCATION_TRANSITION_VERBS:
             if verb in sentence:
                 after = sentence.split(verb, 1)[1]
+                # 跳过语气助词 (了, 着, 过, 的)
+                while after and after[0] in "了着过的":
+                    after = after[1:]
                 for suffix in LOCATION_SUFFIXES:
                     idx = after.find(suffix)
                     if idx >= 0:

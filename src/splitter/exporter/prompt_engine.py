@@ -3,17 +3,12 @@
 将 PROJECT-012 的 SentenceBlock / SplitResult 转换为
 PROJECT-011 (prompt-engine) 的 OptimizeRequest 格式。
 
+v0.9.1 新增: 上下文 (context) 注入，支持角色/场景一致性。
+
 用法:
     from splitter.exporter.prompt_engine import PromptEngineExporter
     exporter = PromptEngineExporter()
-
-    # 单个句子 → /v1/optimize
-    req = exporter.to_optimize_request(sentence_block)
-    # requests.post("http://localhost:8000/v1/optimize", json=req)
-
-    # 批量
-    batch = exporter.from_split_result(split_result)
-    # requests.post("http://localhost:8000/v1/optimize/batch", json=batch)
+    req = exporter.to_optimize_request(sentence_block, context={...})
 """
 
 from __future__ import annotations
@@ -22,14 +17,7 @@ from ..models import SentenceBlock, SplitResult
 
 
 class PromptEngineExporter:
-    """PROJECT-012 → PROJECT-011 数据桥接器。
-
-    Args:
-        default_platform: 默认目标平台
-        default_creative_level: 默认创意程度
-        default_max_length: 默认最大字数
-        era_to_style: 时代→风格映射表
-    """
+    """PROJECT-012 → PROJECT-011 数据桥接器。"""
 
     def __init__(
         self,
@@ -48,7 +36,6 @@ class PromptEngineExporter:
         }
 
     def _get_era_style(self, era: Optional[str] = None) -> Optional[str]:
-        """从时代标签推断风格。"""
         if era and era in self.era_to_style:
             return self.era_to_style[era]
         return None
@@ -56,13 +43,23 @@ class PromptEngineExporter:
     # ===== 核心转换 =====
 
     def to_optimize_request(
-        self, sentence: SentenceBlock, era: Optional[str] = None
+        self,
+        sentence: SentenceBlock,
+        era: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """单个 SentenceBlock → PROJECT-011 OptimizeRequest dict。
 
         Args:
             sentence: PROJECT-012 分句结果
             era: 时代标签 (ancient / modern / mixed), 可选
+            context: 上下文 (v0.9.1), 用于角色/场景一致性
+                {
+                    "synopsis": "故事梗概",
+                    "character": {"name": "小明"},
+                    "setting": "超市",
+                    "character_list": [{"name": "小明"}, {"name": "小红"}],
+                }
         """
         platform = self._infer_platform(sentence.language)
         max_length = self._compute_max_length(sentence)
@@ -79,51 +76,61 @@ class PromptEngineExporter:
         }
         if style_hint:
             req["style_hint"] = style_hint
+        if context:
+            req["context"] = context
         return req
 
     def to_batch_request(
-        self, sentences: List[SentenceBlock], eras: Optional[List[str]] = None
+        self,
+        sentences: List[SentenceBlock],
+        eras: Optional[List[str]] = None,
+        contexts: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        """批量 SentenceBlock → batch 请求 body。
-
-        Args:
-            sentences: 句子列表
-            eras: 可选时代标签列表，长度与 sentences 一致
-        """
+        """批量 SentenceBlock → batch 请求 body。"""
         results = []
         for i, s in enumerate(sentences):
             era = eras[i] if eras and i < len(eras) else None
-            results.append(self.to_optimize_request(s, era=era))
+            ctx = contexts[i] if contexts and i < len(contexts) else None
+            results.append(self.to_optimize_request(s, era=era, context=ctx))
         return results
 
     def from_split_result(self, result: SplitResult) -> List[Dict[str, Any]]:
-        """SplitResult → 批量请求 body。
+        """SplitResult → 批量请求 body（含上下文）。
 
-        尝试从 scenes 中提取 era_info（如有）。
+        遍历 scenes → sentences，从 scene 和 script_analysis 中提取上下文。
         """
-        # 如果 scenes 有 era_info，按 scene 映射到 sentence
-        era_map: Dict[int, str] = {}
-        if result.scenes:
-            for scene in result.scenes:
-                if scene.era_info and scene.era_info.era:
-                    # 这个 scene 里的所有 sentence 共享 era
-                    for s in scene.sentences:
-                        era_map[s.index] = scene.era_info.era
+        sa = result.script_analysis or {}
+        synopsis = sa.get("synopsis", "")
+        all_characters = sa.get("characters", [])
 
-        eras = [era_map.get(s.index) for s in result.sentences]
-        return self.to_batch_request(result.sentences, eras=eras)
+        # 全局角色列表
+        character_list = [{"name": c} for c in all_characters]
+
+        contexts: List[Optional[Dict[str, Any]]] = []
+        eras: List[Optional[str]] = []
+
+        for scene in result.scenes:
+            for s in scene.sentences:
+                era = scene.era_info.era if scene.era_info else None
+                eras.append(era)
+
+                # 构建本句上下文
+                ctx: Dict[str, Any] = {}
+                if synopsis:
+                    ctx["synopsis"] = synopsis
+                if all_characters:
+                    ctx["character_list"] = character_list
+                if scene.characters:
+                    ctx["character"] = {"name": scene.characters[0]}
+                if scene.setting:
+                    ctx["setting"] = scene.setting
+                contexts.append(ctx if ctx else None)
+
+        return self.to_batch_request(result.sentences, eras=eras, contexts=contexts)
 
     # ===== 转换规则 =====
 
     def _infer_platform(self, language: str) -> str:
-        """根据语言推断目标平台。
-
-        zh → midjourney (PROJECT-011 平台名)
-        en → stable_diffusion
-        ja → jimeng (日文走即梦)
-        auto → generic
-        mixed → midjourney
-        """
         mapping = {
             "zh": "midjourney",
             "en": "stable_diffusion",
@@ -134,7 +141,6 @@ class PromptEngineExporter:
         return mapping.get(language, self.default_platform or "generic")
 
     def _compute_max_length(self, sentence: SentenceBlock) -> int:
-        """根据字数状态调整 max_length。"""
         base = self.default_max_length
         if sentence.length_status == "too_long":
             return min(base, 200)
@@ -143,7 +149,6 @@ class PromptEngineExporter:
         return base
 
     def _compute_creative_level(self, sentence: SentenceBlock) -> int:
-        """根据字数状态调整 creative_level。"""
         base = self.default_creative_level
         if sentence.length_status == "too_short":
             return min(base + 3, 10)

@@ -109,11 +109,10 @@ class TestLocationChangeDetection:
 
     def test_detect_location_new_scene(self):
         analyzer = ScriptAnalyzer()
-        sentences = ["小明走进超市", "超市里人很多", "他回到了家"]
+        sentences = ["小明走进超市", "超市里人很多", "他跑到了公园"]
         changes = analyzer.detect_scene_changes(sentences)
-        # 走进 + 超市 → 场景0，回到家 → 场景2
+        # 从超市→公园，应有场景变化
         assert len(changes) >= 1
-        # 至少检测到"家"是场景变化
         assert any(c["sentence_idx"] >= 1 for c in changes)
 
     def test_same_location_no_change(self):

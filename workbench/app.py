@@ -46,7 +46,7 @@ with st.sidebar:
     st.subheader("高级选项")
     enable_era = st.checkbox("时代检测", value=False)
     enable_topic_seg = st.checkbox("TextTiling 主题分割", value=False)
-    enable_script = st.checkbox("剧本分析 (角色/场景)", value=False)
+    enable_script = st.checkbox("剧本分析 (角色/场景)", value=True)
     enable_llm = st.checkbox("LLM Tier", value=False,
         help="需要 OPENAI_API_KEY 或 XFYUN_API_KEY")
 
@@ -242,6 +242,9 @@ with tab4:
     for i, p in enumerate(payloads[:8]):
         with st.expander(f"请求 {i+1}: {p['prompt'][:40]}..."):
             st.json(p)
+            if "context" in p and p["context"]:
+                st.markdown("**📌 上下文 (v0.9.1)**")
+                st.json(p["context"])
 
     if len(payloads) > 8:
         st.info(f"还有 {len(payloads)-8} 条折叠")
