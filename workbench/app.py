@@ -1,4 +1,4 @@
-"""Streamlit 体验工作台 — v0.9.8 多剧本管理 + 对比
+"""Streamlit 体验工作台 — v0.9.10 修复版本号显示
 
 启动:
     streamlit run workbench/app.py --server.port 8501
@@ -15,8 +15,18 @@ import sys, json, os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import re
 import streamlit as st
-from splitter import SmartSentenceSplitter, __version__
+from splitter import SmartSentenceSplitter
+
+# 读 pyproject.toml 版本号 (streamlit 缓存 import 但不缓存文件读取)
+_VER_PATH = Path(__file__).parent.parent / "pyproject.toml"
+try:
+    _VER_TEXT = _VER_PATH.read_text(encoding="utf-8")
+    _VER_MATCH = re.search(r'version\s*=\s*["\']([^"\']+)["\']', _VER_TEXT)
+    APP_VERSION = _VER_MATCH.group(1) if _VER_MATCH else "?"
+except Exception:
+    APP_VERSION = "?"
 from splitter.exporter.subtitle_exporter import SubtitleExporter
 from splitter.exporter.storyboard import StoryboardExporter
 from splitter.exporter.prompt_engine import PromptEngineExporter
@@ -236,7 +246,7 @@ def _render_compare(result_a, result_b, tab1, tab2):
 # ===== 侧栏 =====
 with st.sidebar:
     st.title("⚙️ 配置")
-    st.markdown(f"**v{__version__}**")
+    st.markdown(f"**v{APP_VERSION}**")
     st.markdown("---")
 
     # 剧本管理
