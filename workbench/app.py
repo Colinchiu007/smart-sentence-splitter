@@ -37,6 +37,20 @@ st.set_page_config(
     layout="wide",
 )
 
+# 固定输入框在顶部
+st.markdown("""
+<style>
+div[data-testid="stVerticalBlock"] > div:has(> div > div > textarea) {
+    position: sticky;
+    top: 0;
+    z-index: 99;
+    background: #0e1117;
+    padding: 8px 0;
+    border-bottom: 1px solid #333;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ===== Session 状态 (多剧本管理) =====
 if "scripts" not in st.session_state:
     st.session_state.scripts = {}
@@ -158,15 +172,13 @@ def _render_storyboard(result):
 
 
 def _render_prompts(result):
-    """提示词导出。"""
+    """提示词导出 + 一键调 PROJECT-011 + 图片预览。"""
     st.markdown("导出到 **[PROJECT-011](https://github.com/Colinchiu007/prompt-engine)**")
     exporter = PromptEngineExporter()
-    payloads = []
-    for scene in result.scenes:
-        for sentence in scene.sentences:
-            era = scene.era_info.era if scene.era_info else None
-            payloads.append(exporter.to_optimize_request(sentence, era=era))
-    st.markdown(f"**{len(payloads)}** 条优化请求已生成")
+
+    # 使用 from_split_result（带 context），不再用手动遍历
+    payloads = exporter.from_split_result(result)
+    st.markdown(f"**{len(payloads)}** 条优化请求已生成（含上下文）")
     for i, p in enumerate(payloads[:8]):
         with st.expander(f"请求 {i+1}: {p['prompt'][:40]}..."):
             st.json(p)
@@ -180,14 +192,71 @@ def _render_prompts(result):
     st.download_button("💾 下载 prompt_batch.json",
         data=json.dumps(payloads, ensure_ascii=False, indent=2),
         file_name="prompt_batch.json", mime="application/json")
+
     st.markdown("---")
-    st.markdown("**调用示例**:")
-    st.code(
-        f'curl -X POST http://localhost:8013/v1/optimize '
-        f'-H "Content-Type: application/json" '
-        f'-d \'{json.dumps(payloads[0], ensure_ascii=False) if payloads else {}}\'',
-        language="bash",
-    )
+    st.markdown("### 🚀 一键调 PROJECT-011")
+    col_url, col_btn = st.columns([3, 1])
+    with col_url:
+        server_url = st.text_input("011 服务地址", value="http://localhost:8013", key="pe_server")
+    with col_btn:
+        call_btn = st.button("🎯 发送并预览", type="primary", use_container_width=True)
+
+    if call_btn:
+        if not result or not payloads:
+            st.warning("请先分句")
+            st.stop()
+        with st.spinner(f"正在调用 {server_url}/v1/optimize/batch ..."):
+            try:
+                from splitter.exporter.prompt_engine_client import PromptEngineClient
+                client = PromptEngineClient(server_url, timeout=120)
+                ok = client.health_check()
+                if not ok:
+                    st.error(f"❌ {server_url} 服务不可用，请确认 PROJECT-011 已启动")
+                    st.stop()
+                results = client.optimize_batch(payloads)
+            except Exception as e:
+                st.error(f"❌ 调用失败: {e}")
+                st.stop()
+
+        st.success(f"✅ 优化成功，共 {len(results)} 条")
+        st.markdown("---")
+        st.markdown("### 🖼️ 优化结果预览")
+
+        for i, (req, res) in enumerate(zip(payloads, results)):
+            prompt = res.get("optimized_prompt", "")
+            tokens = res.get("tokens_used", 0)
+            ms = res.get("duration_ms", 0)
+            with st.container():
+                bg = "#1a1a2e" if i % 2 == 0 else "#16213e"
+                st.markdown(
+                    f"""<div style="background:{bg};padding:12px;border-radius:8px;margin:6px 0">
+                    <b>🎬 第 {i+1} 镜</b> | {ms:.0f}ms | {tokens} tokens<br>
+                    <b>原文</b>: {req['prompt']}<br>
+                    <b>场景</b>: {req.get('context', {}).get('setting', '—')}
+                    | <b>角色</b>: {req.get('context', {}).get('character', {}).get('name', '—')}<br>
+                    <b>优化后</b>: {prompt[:200]}{'...' if len(prompt)>200 else ''}
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+                # 图片预览（使用 Picsum 基于 prompt hash 生成确定性图片）
+                import hashlib
+                img_hash = hashlib.md5(prompt.encode()).hexdigest()[:8]
+                img_url = f"https://picsum.photos/seed/{img_hash}/400/225"
+                st.image(img_url, caption=f"预览 #{i+1}: {req['prompt'][:50]}...")
+
+        st.markdown("---")
+        # 批量下载按钮
+        export_data = []
+        for req, res in zip(payloads, results):
+            export_data.append({
+                "original": req["prompt"],
+                "context": req.get("context", {}),
+                "optimized": res.get("optimized_prompt", ""),
+                "tokens": res.get("tokens_used", 0),
+            })
+        st.download_button("📥 下载全部结果 (JSON)",
+            data=json.dumps(export_data, ensure_ascii=False, indent=2),
+            file_name="prompt_engine_results.json", mime="application/json")
 
 
 def _render_result_in_tabs(result, tab1, tab2, tab3, tab4):
