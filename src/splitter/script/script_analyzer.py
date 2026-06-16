@@ -276,7 +276,8 @@ class ScriptAnalyzer:
             words = pseg.cut(text)
             for word, flag in words:
                 if flag.startswith("ns") and len(word) >= 2 and word not in STOP_NAMES:
-                    settings.add(word)
+                    if self._is_valid_location(word):
+                        settings.add(word)
         for suffix in LOCATION_SUFFIXES:
             if suffix in text:
                 settings.add(suffix)
