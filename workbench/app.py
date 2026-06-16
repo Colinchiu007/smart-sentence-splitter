@@ -37,19 +37,23 @@ st.set_page_config(
     layout="wide",
 )
 
-# 固定输入框在顶部
+# 固定输入框在顶部 — 用 st.form 阻止提交后页面跳动
 st.markdown("""
 <style>
-div[data-testid="stVerticalBlock"] > div:has(> div > div > textarea) {
-    position: sticky;
-    top: 0;
-    z-index: 99;
-    background: #0e1117;
-    padding: 8px 0;
-    border-bottom: 1px solid #333;
-}
+.stForm { border: none !important; padding: 0 !important; }
+section.main > div:first-child { max-height: 100vh; overflow-y: auto; }
 </style>
 """, unsafe_allow_html=True)
+
+# ===== 文本输入 (表单内, 提交不跳转) =====
+with st.form("input_form", clear_on_submit=False):
+    # 从当前剧本加载文本
+    current_data = st.session_state.scripts.get(st.session_state.current_script, {"text": "", "result": None})
+    initial_text = current_data.get("text") or _DEFAULT_TEXT
+
+    text = st.text_area("📝 输入文本", value=initial_text, height=100, key="input_area")
+    st.session_state["_input_text"] = text
+    run_btn = st.form_submit_button("🚀 分句", type="primary", use_container_width=True)
 
 # ===== Session 状态 (多剧本管理) =====
 if "scripts" not in st.session_state:
@@ -385,29 +389,6 @@ else:
 
 # 文本输入
 initial_text = current_data.get("text") or _DEFAULT_TEXT
-text = st.text_area("📝 输入文本", value=initial_text, height=150, key="input_area")
-st.session_state["_input_text"] = text
-
-col_btn1, col_btn2 = st.columns([1, 5])
-with col_btn1:
-    run_btn = st.button("🚀 分句", type="primary", use_container_width=True)
-with col_btn2:
-    pass
-
-if not (run_btn and text.strip()):
-    # 无新输入: 显示上次缓存结果
-    if current_data.get("result"):
-        if enable_compare and compare_target:
-            other_data = st.session_state.scripts.get(compare_target, {})
-            if other_data.get("result"):
-                _render_compare(current_data["result"], other_data["result"], tab1, tab2)
-            else:
-                st.info(f"'{compare_target}' 还没有分句结果，请先对此剧本点击分句")
-        else:
-            _render_result_in_tabs(current_data["result"], tab1, tab2, tab3, tab4)
-    else:
-        st.info("上方输入文本，点击 🚀 分句")
-    st.stop()
 
 # ===== 执行分句 =====
 config = {
