@@ -1,0 +1,22 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title format
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          # Conventional Commits: type(scope): description
+          if [[ ! "$TITLE" =~ ^(feat|fix|docs|refactor|test|chore|perf|style|build|ci)(\(.+\))?:\ .+ ]]; then
+            echo "❌ PR 标题不符合 Conventional Commits 规范"
+            echo "   当前: $TITLE"
+            echo "   期望: feat: xxx / fix: xxx / docs: xxx / refactor: xxx ..."
+            exit 1
+          fi
+          echo "✅ PR 标题符合规范: $TITLE"

@@ -1,0 +1,65 @@
+name: Doc Sync Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  doc-sync:
+    name: 文档同步检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 提取当前版本
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 检查 CHANGELOG
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
+            echo "❌ CHANGELOG.md 缺少当前版本 v$VERSION 条目"
+            exit 1
+          fi
+          echo "✅ CHANGELOG v$VERSION 条目已存在"
+
+      - name: 检查 README
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! grep -q "v$VERSION" README.md; then
+            echo "❌ README.md 缺少 v$VERSION 版本号引用"
+            exit 1
+          fi
+          echo "✅ README v$VERSION 引用存在"
+
+      - name: 检查 AGENTS.md 版本
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! grep -q "v0\." docs/AGENTS.md; then
+            echo "❌ docs/AGENTS.md 缺少版本号"
+            exit 1
+          fi
+          echo "✅ AGENTS.md 版本号存在"
+
+  ci-tests:
+    name: 单元测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 安装依赖
+        run: |
+          pip install -e ".[all]"
+          pip install pytest
+      - name: 运行测试
+        run: |
+          python -m pytest tests/ -q
