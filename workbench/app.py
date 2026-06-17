@@ -37,25 +37,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# 固定输入框在顶部 — 用 st.form 阻止提交后页面跳动
-st.markdown("""
-<style>
-.stForm { border: none !important; padding: 0 !important; }
-section.main > div:first-child { max-height: 100vh; overflow-y: auto; }
-</style>
-""", unsafe_allow_html=True)
-
-# ===== 文本输入 (表单内, 提交不跳转) =====
-with st.form("input_form", clear_on_submit=False):
-    # 从当前剧本加载文本
-    current_data = st.session_state.scripts.get(st.session_state.current_script, {"text": "", "result": None})
-    initial_text = current_data.get("text") or _DEFAULT_TEXT
-
-    text = st.text_area("📝 输入文本", value=initial_text, height=100, key="input_area")
-    st.session_state["_input_text"] = text
-    run_btn = st.form_submit_button("🚀 分句", type="primary", use_container_width=True)
-
-# ===== Session 状态 (多剧本管理) =====
+# ===== Session 状态 (多剧本管理) — 必须在任何 session_state 读取之前 =====
 if "scripts" not in st.session_state:
     st.session_state.scripts = {}
 if "current_script" not in st.session_state:
@@ -68,6 +50,24 @@ _DEFAULT_TEXT = (
     "小明回到家。妈妈说：学校停课了。\n\n"
     "第二天，小明和小红决定去公园碰碰运气。"
 )
+
+# 固定输入框在顶部 — 用 st.form 阻止提交后页面跳动
+st.markdown("""
+<style>
+.stForm { border: none !important; padding: 0 !important; }
+section.main > div:first-child { max-height: 100vh; overflow-y: auto; }
+</style>
+""", unsafe_allow_html=True)
+
+# ===== 文本输入 (表单内, 提交不跳转) =====
+with st.form("input_form", clear_on_submit=False):
+    current_data = st.session_state.scripts.get(st.session_state.current_script, {"text": "", "result": None})
+    initial_text = current_data.get("text") or _DEFAULT_TEXT
+    text = st.text_area("📝 输入文本", value=initial_text, height=100, key="input_area")
+    st.session_state["_input_text"] = text
+    run_btn = st.form_submit_button("🚀 分句", type="primary", use_container_width=True)
+
+
 
 
 def _render_script_analysis(result):

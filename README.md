@@ -1,6 +1,6 @@
 # PROJECT-012 — 智能语义分句引擎
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.9.10-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11+-green)]()
 [![License](https://img.shields.io/badge/license-MIT-yellow)]()
 
@@ -174,7 +174,7 @@ python -m pytest tests/unit/
 # 详细模式
 python -m pytest tests/ -v
 
-# 当前测试数：290 ✅
+# 当前测试数：353 ✅
 ```
 
 ## 📚 文档
@@ -210,7 +210,7 @@ src/splitter/
 
 ## 📋 版本
 
-当前版本：**v0.7.0** (2026-06-14)
+当前版本：**v0.9.10** (2026-06-17)
 
 完整历史见 [CHANGELOG.md](docs/CHANGELOG.md)
 
