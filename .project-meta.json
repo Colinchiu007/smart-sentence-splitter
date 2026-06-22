@@ -5,10 +5,6 @@
   "project_name": "smart-sentence-splitter",
   "project_type": "llm_app",
   "created_at": "2026-06-21",
-  "critical_paths": {
-    "prompts": "src/prompts/",
-    "skills": "src/skills/",
-    "core_logic": "src/core/"
-  },
+  "critical_paths": ["02-source/", "config/", "04-tests/"],
   "description": "# PROJECT-012 — 智能语义分句引擎"
 }
