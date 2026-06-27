@@ -1,0 +1,6 @@
+# .clinerules — smart-sentence-splitter 特定硬约束
+
+- rule: "三级降级链顺序不可更改：LLM → 语义 → 规则"
+- rule: "新增分句模型必须在 Postprocessor 中注册"
+- rule: "REST API 端口固定为 8002"
+- rule: "所有 353 个测试必须通过才能合并"
