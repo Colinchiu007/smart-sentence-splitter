@@ -37,11 +37,10 @@ class PromptEngineClient:
         if self._session is None:
             try:
                 import requests
+
                 self._session = requests.Session()
             except ImportError:
-                raise ImportError(
-                    "requests not installed. Run: pip install requests"
-                )
+                raise ImportError("requests not installed. Run: pip install requests")
         return self._session
 
     def health_check(self) -> bool:

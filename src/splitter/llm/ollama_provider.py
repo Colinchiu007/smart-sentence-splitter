@@ -30,6 +30,7 @@ class OllamaProvider:
         """检查 Ollama 服务是否在运行（/api/tags 端点）。"""
         try:
             import requests
+
             resp = requests.get(self.base_url.replace("/v1", "") + "/api/tags", timeout=2)
             return resp.status_code == 200
         except Exception:
@@ -38,6 +39,7 @@ class OllamaProvider:
     def _get_client(self):
         if self._client is None:
             from openai import OpenAI
+
             self._client = OpenAI(
                 api_key="ollama",  # Ollama 不需要 key，但 SDK 要求非空
                 base_url=self.base_url,

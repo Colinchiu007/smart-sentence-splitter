@@ -12,7 +12,7 @@ from typing import List, Optional
 from ...core.base_splitter import BaseSentenceSplitter
 
 # 日语句末标点
-JA_EOS_RE = re.compile(r'[。！？\n]')
+JA_EOS_RE = re.compile(r"[。！？\n]")
 
 # 日语配对引号
 JA_PAIRED_QUOTES = [
@@ -50,7 +50,7 @@ class JapaneseSplitter(BaseSentenceSplitter):
         sentences = []
         last = 0
         for b in boundaries:
-            chunk = text[last:b + 1].strip()
+            chunk = text[last : b + 1].strip()
             if chunk:
                 sentences.append(chunk)
             last = b + 1
@@ -63,15 +63,17 @@ class JapaneseSplitter(BaseSentenceSplitter):
         for i, s in enumerate(sentences):
             if not s:
                 continue
-            blocks.append(SentenceBlock(
-                text=s,
-                index=i,
-                tier="tier3_rule_ja",
-                language="ja",
-                words=[],
-                pos_tags=[],
-                confidence=0.9,
-            ))
+            blocks.append(
+                SentenceBlock(
+                    text=s,
+                    index=i,
+                    tier="tier3_rule_ja",
+                    language="ja",
+                    words=[],
+                    pos_tags=[],
+                    confidence=0.9,
+                )
+            )
 
         return blocks
 

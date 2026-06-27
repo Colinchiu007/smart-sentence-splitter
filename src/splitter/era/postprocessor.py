@@ -25,8 +25,8 @@ class EraPostprocessor(BasePostprocessor):
         only_for_language: str = "zh",
     ):
         """Args:
-            detector_factory: callable 返回 EraDetector 实例（lazy）
-            only_for_language: 仅对该语言文本做时代检测
+        detector_factory: callable 返回 EraDetector 实例（lazy）
+        only_for_language: 仅对该语言文本做时代检测
         """
         self._factory = detector_factory
         self._detector = None
@@ -56,5 +56,6 @@ class EraPostprocessor(BasePostprocessor):
                     scene.era_info = detector.detect(scene.text)
         except Exception as e:
             import logging
+
             logging.warning(f"EraPostprocessor failed: {e}")
         return result

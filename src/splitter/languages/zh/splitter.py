@@ -28,13 +28,45 @@ from .tokenizer import JiebaTokenizer
 # 复句连接词：在这些词前面紧挨着的标点不当作句末
 # 即 "因为...所以..." 中间的分号不切
 ZH_CLAUSE_CONJUNCTIONS = {
-    "因为", "由于", "所以", "因此", "于是", "故",
-    "虽然", "尽管", "即使", "即便", "不论", "不管", "无论",
-    "但是", "然而", "不过", "可是", "但", "却", "只是",
-    "如果", "假如", "倘若", "只要", "除非", "否则",
-    "并且", "而且", "同时", "此外", "另外", "再者", "更",
-    "为了", "以便", "以求",
-    "以至于", "致使", "使得",
+    "因为",
+    "由于",
+    "所以",
+    "因此",
+    "于是",
+    "故",
+    "虽然",
+    "尽管",
+    "即使",
+    "即便",
+    "不论",
+    "不管",
+    "无论",
+    "但是",
+    "然而",
+    "不过",
+    "可是",
+    "但",
+    "却",
+    "只是",
+    "如果",
+    "假如",
+    "倘若",
+    "只要",
+    "除非",
+    "否则",
+    "并且",
+    "而且",
+    "同时",
+    "此外",
+    "另外",
+    "再者",
+    "更",
+    "为了",
+    "以便",
+    "以求",
+    "以至于",
+    "致使",
+    "使得",
 }
 
 
@@ -57,7 +89,7 @@ class ChineseSplitter(BaseSentenceSplitter):
     # 候选句末标点
     EOS_CHARS = set("。！？；.!?;")
     # 英文/数字字符集（用于缩写检测）
-    EN_NUM_PATTERN = re.compile(r'^[a-zA-Z0-9]{4,}$')
+    EN_NUM_PATTERN = re.compile(r"^[a-zA-Z0-9]{4,}$")
 
     def __init__(self, config: dict = None):
         self.config = config or {}
@@ -132,12 +164,12 @@ class ChineseSplitter(BaseSentenceSplitter):
             # === 窗口检测（EOS Window Check）===
 
             # 1. 检测标点后是否连续 4+ 英文/数字 → 可能是缩写 → 不切
-            after_window = text[i + 1: i + 1 + self.eos_window]
+            after_window = text[i + 1 : i + 1 + self.eos_window]
             if after_window and self.EN_NUM_PATTERN.match(after_window):
                 continue
 
             # 2. 检测前一个字符是否是复句连接词的一部分
-            before_window = text[max(0, i - self.eos_window):i]
+            before_window = text[max(0, i - self.eos_window) : i]
             for conj in ZH_CLAUSE_CONJUNCTIONS:
                 if conj in before_window:
                     # 只在连接词距离标点很近时才跳过（< 窗口大小）
@@ -156,7 +188,7 @@ class ChineseSplitter(BaseSentenceSplitter):
         parts = []
         prev = 0
         for pos in positions:
-            part = text[prev:pos + 1]
+            part = text[prev : pos + 1]
             if part.strip():
                 parts.append(part)
             prev = pos + 1
@@ -188,11 +220,15 @@ class ChineseSplitter(BaseSentenceSplitter):
         counter = 0
 
         quote_pairs = [
-            ("「", "」"), ("『", "』"),
-            ("\"", "\""), ("'", "'"), ("\u201c", "\u201d"),
+            ("「", "」"),
+            ("『", "』"),
+            ('"', '"'),
+            ("'", "'"),
+            ("\u201c", "\u201d"),
         ]
 
         for open_q, close_q in quote_pairs:
+
             def gen_replacer():
                 nonlocal counter
                 open_pat = re.escape(open_q)
@@ -211,7 +247,7 @@ class ChineseSplitter(BaseSentenceSplitter):
                 return replace_quoted
 
             text = re.sub(
-                re.escape(open_q) + r'(.*?)' + re.escape(close_q),
+                re.escape(open_q) + r"(.*?)" + re.escape(close_q),
                 gen_replacer(),
                 text,
             )
@@ -226,7 +262,7 @@ class ChineseSplitter(BaseSentenceSplitter):
 
     def _split_long_sentence(self, text: str, start_idx: int) -> List[SentenceBlock]:
         """过长句：先按 ；， 切，再按 max_sentence_length 强制切。"""
-        parts = re.split(r'(?<=[；，,;])\s*', text)
+        parts = re.split(r"(?<=[；，,;])\s*", text)
         result = []
         idx = start_idx
         for p in parts:
@@ -235,7 +271,7 @@ class ChineseSplitter(BaseSentenceSplitter):
                 continue
             if len(p) > self.max_sentence_length:
                 for i in range(0, len(p), self.max_sentence_length):
-                    chunk = p[i:i + self.max_sentence_length].strip()
+                    chunk = p[i : i + self.max_sentence_length].strip()
                     if chunk:
                         result.append(self._make_block_with_metadata(chunk, idx))
                         idx += 1

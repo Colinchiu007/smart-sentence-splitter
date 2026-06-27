@@ -24,6 +24,7 @@ class JiebaTokenizer(BaseTokenizer):
         try:
             import jieba
             import jieba.posseg as pseg
+
             self._jieba = jieba
             self._posseg = pseg
             self._available = True

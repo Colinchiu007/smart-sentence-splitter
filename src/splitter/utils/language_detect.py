@@ -22,9 +22,9 @@ def is_chinese(char: str) -> bool:
         return False
     code = ord(char)
     return (
-        0x4E00 <= code <= 0x9FFF       # CJK Unified Ideographs
-        or 0x3400 <= code <= 0x4DBF   # CJK Extension A
-        or 0x20000 <= code <= 0x2A6DF # CJK Extension B
+        0x4E00 <= code <= 0x9FFF  # CJK Unified Ideographs
+        or 0x3400 <= code <= 0x4DBF  # CJK Extension A
+        or 0x20000 <= code <= 0x2A6DF  # CJK Extension B
     )
 
 

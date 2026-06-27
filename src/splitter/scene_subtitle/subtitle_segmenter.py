@@ -21,6 +21,7 @@ class SubtitleSegmenter:
         self.time_method = self.config.get("time_calculation_method", "proportional")
         # v0.9.2: 复用 LengthSegmenter A 模式 (配对引号保护)
         from .length_segmenter import LengthSegmenter
+
         self._length_seg = LengthSegmenter(
             strategy="A",
             min_chars=self.min_chars,
@@ -84,13 +85,15 @@ class SubtitleSegmenter:
         block_dur = parent_duration / len(blocks)
         result = []
         for i, text in enumerate(blocks):
-            result.append(SubtitleBlock(
-                text=text,
-                display_order=i,
-                start_time=i * block_dur,
-                duration=block_dur,
-                parent_segment_id=parent_id,
-            ))
+            result.append(
+                SubtitleBlock(
+                    text=text,
+                    display_order=i,
+                    start_time=i * block_dur,
+                    duration=block_dur,
+                    parent_segment_id=parent_id,
+                )
+            )
         return result
 
     def _proportional_timestamps(
@@ -108,12 +111,14 @@ class SubtitleSegmenter:
         current_time = 0.0
         for i, text in enumerate(blocks):
             dur = (len(text) / total_chars) * parent_duration
-            result.append(SubtitleBlock(
-                text=text,
-                display_order=i,
-                start_time=current_time,
-                duration=dur,
-                parent_segment_id=parent_id,
-            ))
+            result.append(
+                SubtitleBlock(
+                    text=text,
+                    display_order=i,
+                    start_time=current_time,
+                    duration=dur,
+                    parent_segment_id=parent_id,
+                )
+            )
             current_time += dur
         return result

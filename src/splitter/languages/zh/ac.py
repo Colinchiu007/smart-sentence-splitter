@@ -29,6 +29,7 @@ class Match:
         keyword: 匹配到的模式串
         length: 匹配长度（end - start）
     """
+
     start: int
     end: int
     keyword: str
@@ -43,12 +44,13 @@ class Match:
 
 class _ACNode:
     """AC 自动机节点（内部类）。"""
+
     __slots__ = ("children", "fail", "emits")
 
     def __init__(self):
         self.children: Dict[str, int] = {}  # char → node_id
-        self.fail: int = 0                  # fail 指针
-        self.emits: Set[str] = set()         # 该节点能匹配的所有模式串
+        self.fail: int = 0  # fail 指针
+        self.emits: Set[str] = set()  # 该节点能匹配的所有模式串
 
 
 class ACAutomaton:
@@ -177,10 +179,7 @@ class ACAutomaton:
         # 去掉被更长匹配覆盖的
         final: List[Match] = []
         for m in result:
-            covered = any(
-                other.start <= m.start and other.end >= m.end and other.length > m.length
-                for other in result
-            )
+            covered = any(other.start <= m.start and other.end >= m.end and other.length > m.length for other in result)
             if not covered:
                 final.append(m)
         return final

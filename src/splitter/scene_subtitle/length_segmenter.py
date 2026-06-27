@@ -25,11 +25,25 @@ logger = logging.getLogger(__name__)
 # 优先级标点（中文在前，英文在后）
 # 选最近的 < max_chars 的标点切
 PRIORITY_PUNCTUATION = [
-    "。", "！", "？", "；",  # 强分隔（句末）
-    "》", "」", "）", "]", "】", "}",  # 配对符号右边界 (可作切分点)
-    "，", "、",                  # 弱分隔（句内）
-    ".", "!", "?", ";",        # 英文强分隔
-    ",", ":", ";",                # 英文弱分隔
+    "。",
+    "！",
+    "？",
+    "；",  # 强分隔（句末）
+    "》",
+    "」",
+    "）",
+    "]",
+    "】",
+    "}",  # 配对符号右边界 (可作切分点)
+    "，",
+    "、",  # 弱分隔（句内）
+    ".",
+    "!",
+    "?",
+    ";",  # 英文强分隔
+    ",",
+    ":",
+    ";",  # 英文弱分隔
 ]
 
 # 配对引号/括号 — 切分时跳过这些字符避免断在引号中间
@@ -42,7 +56,7 @@ PAIRED_QUOTES = [
     ("[", "]"),
     ("【", "】"),
     ("{", "}"),
-    ("\"", "\""),
+    ('"', '"'),
     ("'", "'"),
 ]
 
@@ -70,14 +84,9 @@ class LengthSegmenter:
         priority_punctuation: Optional[List[str]] = None,
     ):
         if strategy not in self.VALID_STRATEGIES:
-            raise ValueError(
-                f"Invalid strategy: {strategy!r}. "
-                f"Must be one of {self.VALID_STRATEGIES}"
-            )
+            raise ValueError(f"Invalid strategy: {strategy!r}. Must be one of {self.VALID_STRATEGIES}")
         if min_chars >= max_chars:
-            raise ValueError(
-                f"min_chars ({min_chars}) must be < max_chars ({max_chars})"
-            )
+            raise ValueError(f"min_chars ({min_chars}) must be < max_chars ({max_chars})")
         if min_chars < 1:
             raise ValueError(f"min_chars must be >= 1, got {min_chars}")
 
@@ -104,9 +113,7 @@ class LengthSegmenter:
             return [text] if text else []
         return self._resplit(text)
 
-    def segment(
-        self, sentences: List[SentenceBlock]
-    ) -> List[SentenceBlock]:
+    def segment(self, sentences: List[SentenceBlock]) -> List[SentenceBlock]:
         """应用字数控制策略。
 
         Args:
@@ -125,9 +132,7 @@ class LengthSegmenter:
         return self._passthrough(sentences)
 
     # ===== Strategy: off =====
-    def _passthrough(
-        self, sentences: List[SentenceBlock]
-    ) -> List[SentenceBlock]:
+    def _passthrough(self, sentences: List[SentenceBlock]) -> List[SentenceBlock]:
         """off 策略：原样返回，只标记 status=ok 和 applied=none。"""
         out = []
         for s in sentences:
@@ -140,9 +145,7 @@ class LengthSegmenter:
         return out
 
     # ===== Strategy: B (标尺) =====
-    def _apply_b(
-        self, sentences: List[SentenceBlock]
-    ) -> List[SentenceBlock]:
+    def _apply_b(self, sentences: List[SentenceBlock]) -> List[SentenceBlock]:
         """B 策略：不切，只标 length_status。"""
         self.warnings = []  # 重置
         out = []
@@ -154,8 +157,7 @@ class LengthSegmenter:
             new.length_status = self._classify_length(s.text)
             if new.length_status != "ok" and self.warning_on_violation:
                 self.warnings.append(
-                    f"[B] Sentence {s.index} length={len(s.text)} "
-                    f"status={new.length_status}: {s.text[:30]}..."
+                    f"[B] Sentence {s.index} length={len(s.text)} status={new.length_status}: {s.text[:30]}..."
                 )
             out.append(new)
         return out
@@ -170,9 +172,7 @@ class LengthSegmenter:
         return "ok"
 
     # ===== Strategy: A (重切) =====
-    def _apply_a(
-        self, sentences: List[SentenceBlock]
-    ) -> List[SentenceBlock]:
+    def _apply_a(self, sentences: List[SentenceBlock]) -> List[SentenceBlock]:
         """A 策略：按字数 + 标点优先级重切。"""
         out = []
         for s in sentences:
@@ -212,24 +212,24 @@ class LengthSegmenter:
         remaining = text
 
         while len(remaining) > self.max_chars:
-            head = remaining[:self.max_chars]
+            head = remaining[: self.max_chars]
             split_at = self._find_split_position(head)
 
             if split_at > 0:
                 # 找到了标点位置 — 在标点处切
-                chunks.append(remaining[:split_at + 1])
-                remaining = remaining[split_at + 1:]
+                chunks.append(remaining[: split_at + 1])
+                remaining = remaining[split_at + 1 :]
             else:
                 # 找不到标点 — 检查是否截断了配对引号
                 pair_split = self._try_paired_quote_split(remaining)
                 if pair_split is not None:
                     cut_at, head_len = pair_split
-                    chunks.append(remaining[:cut_at + head_len])
-                    remaining = remaining[cut_at + head_len:]
+                    chunks.append(remaining[: cut_at + head_len])
+                    remaining = remaining[cut_at + head_len :]
                 else:
                     # 实在没招 — 强制按 max_chars 切
-                    chunks.append(remaining[:self.max_chars])
-                    remaining = remaining[self.max_chars:]
+                    chunks.append(remaining[: self.max_chars])
+                    remaining = remaining[self.max_chars :]
 
         if remaining:
             chunks.append(remaining)
@@ -243,7 +243,7 @@ class LengthSegmenter:
         如果该左边界在 head 之外找不到匹配的右边界 (即被截断),
         但在 remaining 整体能找到, 则将 (left, right) 整体作为 1 块切出。
         """
-        head = remaining[:self.max_chars]
+        head = remaining[: self.max_chars]
         for left, right in PAIRED_QUOTES:
             # 找 head 内的所有 left
             i = 0

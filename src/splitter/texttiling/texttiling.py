@@ -30,8 +30,7 @@ class TopicBoundary:
 
 # 中文停用字 (TextTiling 分词用)
 STOP_CHARS = frozenset(
-    '的了在是不也和就都而及与或但被把从到这那上下有我你他她它们个之以'
-    '为所能会很太又再还吧吗啊呢嗯哦哈呀哟噢喔嘛呗啵'
+    "的了在是不也和就都而及与或但被把从到这那上下有我你他她它们个之以为所能会很太又再还吧吗啊呢嗯哦哈呀哟噢喔嘛呗啵"
 )
 
 
@@ -73,14 +72,12 @@ class TextTiling:
         i = 0
         while i < len(sentence):
             c = sentence[i]
-            if '\u4e00' <= c <= '\u9fff' and c not in STOP_CHARS:
+            if "\u4e00" <= c <= "\u9fff" and c not in STOP_CHARS:
                 tokens.append(c)
                 i += 1
             elif c.isascii() and c.isalpha():
-                word = ''
-                while i < len(sentence) and sentence[i].isascii() and (
-                    sentence[i].isalpha() or sentence[i] == "'"
-                ):
+                word = ""
+                while i < len(sentence) and sentence[i].isascii() and (sentence[i].isalpha() or sentence[i] == "'"):
                     word += sentence[i]
                     i += 1
                 if word:
@@ -142,13 +139,15 @@ class TextTiling:
             sent_idx = tile_sent_indices[tile_idx]
             if sent_idx < len(sentence_starts):
                 char_pos = sentence_starts[sent_idx]
-                result.append(TopicBoundary(
-                    position=char_pos,
-                    depth_score=depth,
-                    confidence=min(1.0, depth / max_depth) if max_depth > 0 else 0.0,
-                    text_before=("".join(sentences[max(0, sent_idx-1):sent_idx])[-30:]),
-                    text_after=("".join(sentences[sent_idx:sent_idx+2])[:30]),
-                ))
+                result.append(
+                    TopicBoundary(
+                        position=char_pos,
+                        depth_score=depth,
+                        confidence=min(1.0, depth / max_depth) if max_depth > 0 else 0.0,
+                        text_before=("".join(sentences[max(0, sent_idx - 1) : sent_idx])[-30:]),
+                        text_after=("".join(sentences[sent_idx : sent_idx + 2])[:30]),
+                    )
+                )
 
         return result
 
@@ -180,9 +179,7 @@ class TextTiling:
                 depths.append(max(0.0, d))
         return depths
 
-    def _identify_boundaries(
-        self, depths: List[float], threshold: float = 0.15
-    ) -> List[Tuple[int, float]]:
+    def _identify_boundaries(self, depths: List[float], threshold: float = 0.15) -> List[Tuple[int, float]]:
         """找局部极大值且超过阈值的边界。"""
         boundaries = []
         for i in range(1, len(depths) - 1):
@@ -203,7 +200,7 @@ class TextTiling:
     def tokenize(self, text: str) -> List[str]:
         """向下兼容: 旧字符级分词。"""
         # 探测语言
-        cjk = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        cjk = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         ascii_alpha = sum(1 for c in text if c.isascii() and c.isalpha())
         total = max(1, len(text))
 
@@ -212,19 +209,20 @@ class TextTiling:
             i = 0
             while i < len(text):
                 c = text[i]
-                if '\u4e00' <= c <= '\u9fff' and c not in STOP_CHARS:
+                if "\u4e00" <= c <= "\u9fff" and c not in STOP_CHARS:
                     tokens.append(c)
                     i += 1
                 elif c.isascii() and c.isalpha():
-                    word = ''
+                    word = ""
                     while i < len(text) and text[i].isascii() and (text[i].isalpha() or text[i] == "'"):
                         word += text[i]
                         i += 1
-                    if word: tokens.append(word.lower())
+                    if word:
+                        tokens.append(word.lower())
                 else:
                     i += 1
             return tokens
-        return [t.lower() for t in re.split(r'\s+', text.strip()) if t and t.isascii()]
+        return [t.lower() for t in re.split(r"\s+", text.strip()) if t and t.isascii()]
 
     def find_boundaries(self, text: str, tokens: Optional[List[str]] = None) -> List[TopicBoundary]:
         """旧版接口 (按字符级 tiles 分). 已弃用, 用 tile_by_sentences()。"""
@@ -239,6 +237,7 @@ class TextTiling:
 
         # 用字符级旧逻辑
         from collections import Counter
+
         tiles, start_indices = self._build_tiles(tokens)
         tile_vectors = [Counter(t) for t in tiles]
         sims = self._compute_similarities(tile_vectors)
@@ -252,12 +251,15 @@ class TextTiling:
         for tile_idx, depth in boundaries:
             token_pos = start_indices[tile_idx]
             char_pos = self._token_pos_to_char_pos(text, tokens, token_pos)
-            result.append(TopicBoundary(
-                position=char_pos, depth_score=depth,
-                confidence=min(1.0, depth / max_depth) if max_depth > 0 else 0.0,
-                text_before=text[max(0, char_pos - 30):char_pos],
-                text_after=text[char_pos:min(len(text), char_pos + 30)],
-            ))
+            result.append(
+                TopicBoundary(
+                    position=char_pos,
+                    depth_score=depth,
+                    confidence=min(1.0, depth / max_depth) if max_depth > 0 else 0.0,
+                    text_before=text[max(0, char_pos - 30) : char_pos],
+                    text_after=text[char_pos : min(len(text), char_pos + 30)],
+                )
+            )
         return result
 
     def _build_tiles(self, tokens: List[str]) -> Tuple[List[List[str]], List[int]]:
@@ -266,7 +268,7 @@ class TextTiling:
         tiles = []
         start_indices = []
         for i in range(0, len(tokens) - w + 1, step):
-            tiles.append(tokens[i:i + w])
+            tiles.append(tokens[i : i + w])
             start_indices.append(i)
         return tiles, start_indices
 

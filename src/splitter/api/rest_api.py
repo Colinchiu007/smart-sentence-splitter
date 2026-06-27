@@ -28,8 +28,10 @@ from ..core.base_splitter import BaseSentenceSplitter
 
 # === Pydantic 请求/响应模型 ===
 
+
 class SplitRequest(BaseModel):
     """POST /v1/split 请求体。"""
+
     text: str = Field(..., min_length=1, description="待分句的文本")
     language: str = Field(default="auto", description="auto | zh | en")
     mode: str = Field(default="balanced", description="fast | balanced | precise")
@@ -41,6 +43,7 @@ class SplitRequest(BaseModel):
 
 class SentenceResponse(BaseModel):
     """分句结果中的单个句子。"""
+
     index: int
     text: str
     language: str
@@ -53,6 +56,7 @@ class SentenceResponse(BaseModel):
 
 class SceneResponse(BaseModel):
     """分句结果中的单个场景。"""
+
     segment_id: int
     text: str
     estimated_duration: float
@@ -64,6 +68,7 @@ class SceneResponse(BaseModel):
 
 class SplitResponse(BaseModel):
     """POST /v1/split 响应体。"""
+
     text_length: int
     language: str
     tier_used: str
@@ -76,12 +81,14 @@ class SplitResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """GET /health 响应。"""
+
     status: str
     version: str
 
 
 class CapabilityInfo(BaseModel):
     """能力声明。"""
+
     name: str
     available: bool
     description: str
@@ -89,6 +96,7 @@ class CapabilityInfo(BaseModel):
 
 class CapabilitiesResponse(BaseModel):
     """GET /capabilities 响应。"""
+
     version: str
     languages: List[str]
     tiers: List[CapabilityInfo]
@@ -98,6 +106,7 @@ class CapabilitiesResponse(BaseModel):
 
 class InfoResponse(BaseModel):
     """GET /v1/info 响应。"""
+
     version: str
     llm_available: bool
     llm_provider: Optional[str] = None
@@ -107,12 +116,14 @@ class InfoResponse(BaseModel):
 
 class SplitBatchRequest(BaseModel):
     """POST /v1/split/batch 请求体 (v0.9.6)."""
+
     texts: List[str] = Field(..., min_length=0, description="待分句的文本列表")
     config: Optional[Dict[str, Any]] = Field(default=None, description="统一配置覆盖")
 
 
 class SplitBatchResponse(BaseModel):
     """POST /v1/split/batch 响应体 (v0.9.6)."""
+
     results: List[SplitResponse]
 
 
@@ -133,6 +144,7 @@ def _detect_capabilities() -> CapabilitiesResponse:
     llm_ollama = False
     try:
         import requests
+
         resp = requests.get("http://localhost:11434/api/tags", timeout=1)
         llm_ollama = resp.status_code == 200
     except Exception:
@@ -140,14 +152,14 @@ def _detect_capabilities() -> CapabilitiesResponse:
     llm_any = llm_openai or llm_xfyun or llm_ollama
 
     tiers = [
-        CapabilityInfo(name="tier1_llm", available=llm_any,
-                      description="LLM 语义分句（OpenAI/讯飞/Ollama）"),
-        CapabilityInfo(name="tier2_texttiling", available=True,
-                      description="TextTiling 主题边界识别（需 enable_topic_segmentation）"),
-        CapabilityInfo(name="tier2_jieba", available=True,
-                      description="jieba 分词+词性标注（中文）"),
-        CapabilityInfo(name="tier3_rule", available=True,
-                      description="规则分句（零依赖 fallback）"),
+        CapabilityInfo(name="tier1_llm", available=llm_any, description="LLM 语义分句（OpenAI/讯飞/Ollama）"),
+        CapabilityInfo(
+            name="tier2_texttiling",
+            available=True,
+            description="TextTiling 主题边界识别（需 enable_topic_segmentation）",
+        ),
+        CapabilityInfo(name="tier2_jieba", available=True, description="jieba 分词+词性标注（中文）"),
+        CapabilityInfo(name="tier3_rule", available=True, description="规则分句（零依赖 fallback）"),
     ]
 
     return CapabilitiesResponse(
@@ -186,6 +198,7 @@ def info():
     llm_provider = None
     try:
         from splitter.tiers.tier1_llm import LLMSplitter
+
         s = LLMSplitter()
         llm_avail = s.is_available()
         llm_provider = s.provider_name if llm_avail else None
@@ -247,11 +260,18 @@ def split_batch(req: SplitBatchRequest):
     for text in req.texts:
         if not text.strip():
             # 空文本跳过, 保持索引对应
-            results.append(SplitResponse(
-                text_length=0, language="", tier_used="",
-                total_duration=0.0, total_scenes=0,
-                sentences=[], scenes=[], config_snapshot={},
-            ))
+            results.append(
+                SplitResponse(
+                    text_length=0,
+                    language="",
+                    tier_used="",
+                    total_duration=0.0,
+                    total_scenes=0,
+                    sentences=[],
+                    scenes=[],
+                    config_snapshot={},
+                )
+            )
             continue
         try:
             result = splitter.split(text)
@@ -283,15 +303,17 @@ def _to_response(result: SplitResult, req: SplitRequest) -> SplitResponse:
     for sc in result.scenes:
         era = sc.era_info.era if sc.era_info else None
         era_conf = sc.era_info.confidence if sc.era_info else None
-        scenes.append(SceneResponse(
-            segment_id=sc.segment_id,
-            text=sc.text,
-            estimated_duration=sc.estimated_duration,
-            target_words=sc.target_words,
-            era=era,
-            era_confidence=era_conf,
-            subtitle_count=len(sc.subtitles),
-        ))
+        scenes.append(
+            SceneResponse(
+                segment_id=sc.segment_id,
+                text=sc.text,
+                estimated_duration=sc.estimated_duration,
+                target_words=sc.target_words,
+                era=era,
+                era_confidence=era_conf,
+                subtitle_count=len(sc.subtitles),
+            )
+        )
 
     return SplitResponse(
         text_length=len(req.text),
@@ -308,6 +330,7 @@ def _to_response(result: SplitResult, req: SplitRequest) -> SplitResponse:
 def main():
     """CLI 启动入口。"""
     import uvicorn
+
     port = int(os.getenv("PORT", "8000"))
     host = os.getenv("HOST", "0.0.0.0")
     uvicorn.run("splitter.api.rest_api:app", host=host, port=port, reload=False)

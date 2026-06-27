@@ -70,16 +70,22 @@ def main(argv: Optional[list] = None) -> int:
 
     # 4. 处理
     if args.verbose:
-        print(f"⚙️  配置: language={config['language']}, min_tier={config['min_tier']}, "
-              f"enable_era={config['enable_era']}, enable_llm={config['enable_llm']}", file=sys.stderr)
+        print(
+            f"⚙️  配置: language={config['language']}, min_tier={config['min_tier']}, "
+            f"enable_era={config['enable_era']}, enable_llm={config['enable_llm']}",
+            file=sys.stderr,
+        )
 
     splitter = SmartSentenceSplitter(config)
     result = splitter.split(text)
 
     if args.verbose:
-        print(f"✅ 处理完成: language={result.language}, tier={result.tier_used}, "
-              f"sentences={len(result.sentences)}, scenes={result.total_scenes}, "
-              f"duration={result.total_duration:.1f}s", file=sys.stderr)
+        print(
+            f"✅ 处理完成: language={result.language}, tier={result.tier_used}, "
+            f"sentences={len(result.sentences)}, scenes={result.total_scenes}, "
+            f"duration={result.total_duration:.1f}s",
+            file=sys.stderr,
+        )
 
     # 5. 序列化输出
     indent = None if args.compact else 2
