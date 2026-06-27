@@ -74,10 +74,7 @@ class LLMSplitter(BaseSentenceSplitter):
                 timeout=cfg.get("timeout", 60),
             )
         else:
-            raise ValueError(
-                f"Unknown LLM provider: {name}. "
-                f"Supported: openai, xfyun, ollama"
-            )
+            raise ValueError(f"Unknown LLM provider: {name}. Supported: openai, xfyun, ollama")
 
     def is_available(self) -> bool:
         """检查 provider 是否就绪（API key + 端点）。"""
@@ -120,9 +117,7 @@ class LLMSplitter(BaseSentenceSplitter):
                 logger.warning(f"LLM split attempt {attempt + 1} failed: {e}")
                 continue
 
-        raise RuntimeError(
-            f"LLM split failed after {self.max_retries + 1} attempts: {last_error}"
-        )
+        raise RuntimeError(f"LLM split failed after {self.max_retries + 1} attempts: {last_error}")
 
     def _parse_response(self, response: str, original_text: str) -> List[str]:
         """解析 LLM 响应，3 层容错。

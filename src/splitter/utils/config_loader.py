@@ -35,7 +35,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "tokenizer": "whitespace",
                 "use_pos": False,
                 "abbreviation_table": "default_en",
-                "quote_pairs": [["\"", "\""], ["'", "'"]],
+                "quote_pairs": [['"', '"'], ["'", "'"]],
                 "handle_ellipsis": True,
                 "handle_em_dash": True,
             },
@@ -57,9 +57,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "min_chars_per_block": 8,
         "max_chars_per_block": 15,
         "punctuation_priority": [
-            "。", "！", "？", "；", "，",
-            ".", "!", "?", ",",
-            "、", " ", "\n",
+            "。",
+            "！",
+            "？",
+            "；",
+            "，",
+            ".",
+            "!",
+            "?",
+            ",",
+            "、",
+            " ",
+            "\n",
         ],
         "time_calculation_method": "proportional",
     },
@@ -111,6 +120,7 @@ def load_config(source: Union[str, Path, Dict[str, Any], None] = None) -> Dict[s
             user_config = yaml.safe_load(f) or {}
     elif path.suffix.lower() == ".json":
         import json
+
         with open(path, "r", encoding="utf-8") as f:
             user_config = json.load(f)
     else:
@@ -131,11 +141,7 @@ def merge_config(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, An
     """
     result = copy.deepcopy(base)
     for key, value in override.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = merge_config(result[key], value)
         else:
             result[key] = copy.deepcopy(value)

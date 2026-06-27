@@ -29,9 +29,9 @@ class EnglishSplitter(BaseSentenceSplitter):
     # 句末标点+引号/括号（允许在标点后跟引号/括号）
     SENTENCE_END_WITH_QUOTE = re.compile(r'(?<=[.!?]["\'])\s+(?=[A-Z])')
     # 省略号（视为 1 个边界）
-    ELLIPSIS = re.compile(r'\.{3,}')
+    ELLIPSIS = re.compile(r"\.{3,}")
     # 破折号包裹的子句
-    EM_DASH_CLAUSE = re.compile(r'—[^—]+?—')
+    EM_DASH_CLAUSE = re.compile(r"—[^—]+?—")
 
     def __init__(self, config: dict = None):
         self.config = config or {}
@@ -84,7 +84,8 @@ class EnglishSplitter(BaseSentenceSplitter):
     def _clean_whitespace(text: str) -> str:
         """合并多余空白（保留句末标点）。"""
         import re as _re
-        return _re.sub(r'[\t ]+', ' ', text)
+
+        return _re.sub(r"[\t ]+", " ", text)
 
     def _protect_ellipsis(self, text: str) -> tuple[str, dict]:
         """保护省略号（视为 1 个边界点）。"""
@@ -114,7 +115,7 @@ class EnglishSplitter(BaseSentenceSplitter):
         for i, abbr in enumerate(sorted_abbrs):
             placeholder = f"§ABBR{i}§"
             # 用空格/标点边界匹配
-            pattern = re.compile(r'(?<!\w)' + re.escape(abbr) + r'(?!\w)')
+            pattern = re.compile(r"(?<!\w)" + re.escape(abbr) + r"(?!\w)")
             if pattern.search(text):
                 abbr_map[placeholder] = abbr
                 text = pattern.sub(placeholder, text)
@@ -157,13 +158,13 @@ class EnglishSplitter(BaseSentenceSplitter):
         # 规则 2: §ELLIPSIS\d+§ 后跟空白 + 小写 → 切
         marked = re.sub(
             r'([.!?;])\s+(?=[A-Z"\(\(])',
-            r'\1\n<SPLIT>',
+            r"\1\n<SPLIT>",
             text,
         )
         # 规则 2: 省略号占位符 + 空白 + 小写
         marked = re.sub(
-            r'(§ELLIPSIS\d+§)\s+(?=[a-z])',
-            r'\1\n<SPLIT>',
+            r"(§ELLIPSIS\d+§)\s+(?=[a-z])",
+            r"\1\n<SPLIT>",
             marked,
         )
 
@@ -172,7 +173,7 @@ class EnglishSplitter(BaseSentenceSplitter):
 
     def _split_long(self, text: str, start_idx: int) -> List[SentenceBlock]:
         """处理过长句：在逗号/分号处切。"""
-        parts = re.split(r'(?<=[,;:])\s+', text)
+        parts = re.split(r"(?<=[,;:])\s+", text)
         result = []
         idx = start_idx
         for p in parts:
@@ -182,7 +183,7 @@ class EnglishSplitter(BaseSentenceSplitter):
             if len(p) > self.max_sentence_length:
                 # 强制按 max_sentence_length 切
                 for i in range(0, len(p), self.max_sentence_length):
-                    chunk = p[i:i + self.max_sentence_length].strip()
+                    chunk = p[i : i + self.max_sentence_length].strip()
                     if chunk:
                         result.append(self._make_block(chunk, idx))
                         idx += 1

@@ -33,6 +33,7 @@ class OpenAIProvider:
     def _get_client(self):
         if self._client is None:
             from openai import OpenAI
+
             self._client = OpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,

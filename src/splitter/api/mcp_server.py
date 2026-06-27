@@ -61,6 +61,7 @@ def _build_splitter(config: Optional[Dict[str, Any]] = None) -> SmartSentenceSpl
 
 # === Tool: split_text ===
 
+
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     """工具列表。"""
@@ -131,9 +132,7 @@ async def handle_call_tool(
     result = splitter.split(text)
 
     # 构造可读输出
-    sentences_text = "\n".join(
-        f"  [{s.index}] {s.text}" for s in result.sentences
-    )
+    sentences_text = "\n".join(f"  [{s.index}] {s.text}" for s in result.sentences)
 
     summary = (
         f"语言: {result.language}, Tier: {result.tier_used}, "
@@ -156,6 +155,7 @@ async def handle_call_tool(
 
 
 # === Resource: health & capabilities ===
+
 
 @server.list_resources()
 async def handle_list_resources() -> list[types.Resource]:
@@ -180,32 +180,39 @@ async def handle_list_resources() -> list[types.Resource]:
 async def handle_read_resource(uri: str) -> str:
     """读取资源。"""
     if uri == "status://health":
-        return json.dumps({
-            "status": "ok",
-            "version": __version__,
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "ok",
+                "version": __version__,
+            },
+            ensure_ascii=False,
+        )
 
     if uri == "status://capabilities":
-        return json.dumps({
-            "version": __version__,
-            "languages": ["zh", "en", "mixed", "auto"],
-            "tiers": ["tier1_llm", "tier2_semantic", "tier3_rule"],
-            "modes": ["fast", "balanced", "precise"],
-            "features": [
-                "sentence_segmentation",
-                "scene_segmentation",
-                "subtitle_segmentation",
-                "era_detection",
-                "topic_boundary_detection",
-                "user_dictionary",
-                "llm_tier",
-            ],
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "version": __version__,
+                "languages": ["zh", "en", "mixed", "auto"],
+                "tiers": ["tier1_llm", "tier2_semantic", "tier3_rule"],
+                "modes": ["fast", "balanced", "precise"],
+                "features": [
+                    "sentence_segmentation",
+                    "scene_segmentation",
+                    "subtitle_segmentation",
+                    "era_detection",
+                    "topic_boundary_detection",
+                    "user_dictionary",
+                    "llm_tier",
+                ],
+            },
+            ensure_ascii=False,
+        )
 
     raise ValueError(f"Unknown resource: {uri}")
 
 
 # === 启动 ===
+
 
 async def main():
     """主入口（stdio 模式）。"""
@@ -226,4 +233,5 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())

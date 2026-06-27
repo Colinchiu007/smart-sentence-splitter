@@ -57,6 +57,7 @@ class PostprocessorChain:
             except Exception as e:
                 # 后处理器不应影响主线
                 import logging
+
                 logging.warning(f"Postprocessor '{processor.name}' failed: {e}")
         return result
 
@@ -72,6 +73,7 @@ class CustomMergingProcessor(BasePostprocessor):
         self.custom = None
         if dict_path:
             from .languages.zh.custom import Customization
+
             self.custom = Customization()
             self.custom.load_customization(dict_path)
 
@@ -84,11 +86,13 @@ class CustomMergingProcessor(BasePostprocessor):
             # 有合并：重建 split result
             new_sentences = []
             for i, text in enumerate(merged):
-                new_sentences.append(SentenceBlock(
-                    text=text,
-                    index=i,
-                    language=result.language,
-                    tier=result.tier_used,
-                ))
+                new_sentences.append(
+                    SentenceBlock(
+                        text=text,
+                        index=i,
+                        language=result.language,
+                        tier=result.tier_used,
+                    )
+                )
             result.sentences = new_sentences
         return result

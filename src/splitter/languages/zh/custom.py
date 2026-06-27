@@ -33,7 +33,7 @@ class Customization:
 
     def __init__(self):
         self.ac = ACAutomaton()
-        self.phrases: List[str] = []   # phrase → text
+        self.phrases: List[str] = []  # phrase → text
         self._loaded = False
 
     def add_word(self, word: str, sep: Optional[str] = None):
@@ -119,9 +119,7 @@ class Customization:
         for merge_start, merge_end in merged_ranges:
             # 添加合并区间前的文本
             if last_end_char < merge_start:
-                intervening = self._char_range_to_segments(
-                    full_text, last_end_char, merge_start, split_result
-                )
+                intervening = self._char_range_to_segments(full_text, last_end_char, merge_start, split_result)
                 result.extend(intervening)
 
             # 添加合并后的短语
@@ -131,9 +129,7 @@ class Customization:
 
         # 添加剩余文本
         if last_end_char < len(full_text):
-            remaining = self._char_range_to_segments(
-                full_text, last_end_char, len(full_text), split_result
-            )
+            remaining = self._char_range_to_segments(full_text, last_end_char, len(full_text), split_result)
             result.extend(remaining)
 
         # 过滤空
@@ -154,15 +150,13 @@ class Customization:
         phrase_parts = []
         for part in parts:
             if "/" in part:
-                phrase_parts.append(part[:part.rfind("/")])
+                phrase_parts.append(part[: part.rfind("/")])
             else:
                 phrase_parts.append(part)
         return "".join(phrase_parts)
 
     @staticmethod
-    def _char_range_to_segments(
-        full_text: str, char_start: int, char_end: int, segments: List[str]
-    ) -> List[str]:
+    def _char_range_to_segments(full_text: str, char_start: int, char_end: int, segments: List[str]) -> List[str]:
         """从 segments 中取落在 [char_start, char_end) 之间的部分。"""
         cum = 0
         result = []
@@ -243,6 +237,7 @@ class Customization:
 
         # 构建邻接表
         from collections import defaultdict
+
         adj: Dict[int, List[Tuple[int, float]]] = defaultdict(list)
         for (s, e), w in edges.items():
             adj[s].append((e, w))

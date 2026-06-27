@@ -1,0 +1,8 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+# Ignore pre-existing issues — F401 unused imports, F821 undefined names,
+# F841 unused variables, E741 ambiguous names, E701 multiple stmts on one line
+ignore = ["E501", "F401", "F821", "F841", "E741", "E701"]
+select = ["E", "F", "W"]

@@ -50,6 +50,7 @@ class SmartSentenceSplitter:
 
         # v0.4: LLM Tier (Tier 1) — 真实可用时加入链头
         from .tiers.tier1_llm import LLMSplitter
+
         self.llm_enabled = self.config.get("enable_llm", False)
         self._llm_splitter_instance = None
 
@@ -63,12 +64,10 @@ class SmartSentenceSplitter:
             except Exception:
                 pass  # LLM 不可用就跳过
         if self.enable_topic_seg:
-            zh_splitters.append(TextTilingSemanticSplitter(
-                self.config.get("texttiling", {})
-            ))
-        zh_splitters.append(ChineseSplitter(
-            self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("zh", {})
-        ))
+            zh_splitters.append(TextTilingSemanticSplitter(self.config.get("texttiling", {})))
+        zh_splitters.append(
+            ChineseSplitter(self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("zh", {}))
+        )
         zh_splitters.append(ChineseRuleSplitter())
         # 关键：TierChain min_tier 来自一个可调用的 lambda，每次 split 都重新读
         self._zh_chain = TierChain(
@@ -86,12 +85,10 @@ class SmartSentenceSplitter:
             except Exception:
                 pass
         if self.enable_topic_seg:
-            en_splitters.append(TextTilingSemanticSplitter(
-                self.config.get("texttiling", {})
-            ))
-        en_splitters.append(EnglishSplitter(
-            self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("en", {})
-        ))
+            en_splitters.append(TextTilingSemanticSplitter(self.config.get("texttiling", {})))
+        en_splitters.append(
+            EnglishSplitter(self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("en", {}))
+        )
         en_splitters.append(EnglishRuleSplitter())
         self._en_chain = TierChain(
             splitters=en_splitters,
@@ -99,9 +96,9 @@ class SmartSentenceSplitter:
         )
 
         # 日文 splitter 链 (v0.9.9)
-        ja_splitters: List[BaseSentenceSplitter] = [JapaneseSplitter(
-            self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("ja", {})
-        )]
+        ja_splitters: List[BaseSentenceSplitter] = [
+            JapaneseSplitter(self.config.get("sentence_tokenizer", {}).get("language_specific", {}).get("ja", {}))
+        ]
         self._ja_chain = TierChain(
             splitters=ja_splitters,
             min_tier_provider=lambda: self._get_effective_min_tier(),
@@ -125,6 +122,7 @@ class SmartSentenceSplitter:
         # F6: EraPostprocessor（lazy 检测）
         if self.config.get("enable_era", False):
             from .era.postprocessor import EraPostprocessor
+
             self.postprocessor_chain.add(
                 EraPostprocessor(
                     detector_factory=self._get_era_detector,
@@ -136,14 +134,14 @@ class SmartSentenceSplitter:
         user_dict_path = self.config.get("user_dict_path")
         if user_dict_path:
             from .postprocessor import CustomMergingProcessor
-            self.postprocessor_chain.add(
-                CustomMergingProcessor({"user_dict_path": user_dict_path})
-            )
+
+            self.postprocessor_chain.add(CustomMergingProcessor({"user_dict_path": user_dict_path}))
 
     def _get_era_detector(self):
         """F3: Lazy 加载 EraDetector。"""
         if self._era_detector_instance is None:
             from .era.detector import EraDetector
+
             self._era_detector_instance = EraDetector()
         return self._era_detector_instance
 
@@ -151,22 +149,20 @@ class SmartSentenceSplitter:
         """v0.4: Lazy 加载 LLM Tier。"""
         if self._llm_splitter_instance is None:
             from .tiers.tier1_llm import LLMSplitter
+
             self._llm_splitter_instance = LLMSplitter(self.config.get("llm", {}))
         return self._llm_splitter_instance
 
     # ===== v0.7: 剧本分析 =====
 
-    def _analyze_script(
-        self, text: str, scenes: List
-    ) -> Optional[Dict[str, Any]]:
+    def _analyze_script(self, text: str, scenes: List) -> Optional[Dict[str, Any]]:
         """对全文做剧本分析，注入角色/场景到每个 SceneSegment。"""
         from .script.script_analyzer import ScriptAnalyzer
+
         analyzer = ScriptAnalyzer()
         return analyzer.analyze(text)
 
-    def _enrich_scenes(
-        self, scenes: List, script_analysis: Dict[str, Any]
-    ) -> None:
+    def _enrich_scenes(self, scenes: List, script_analysis: Dict[str, Any]) -> None:
         """把角色/场景列表注入到每个 SceneSegment 中。
 
         对每个场景，检查文本中是否包含角色名或场景名，
@@ -191,11 +187,20 @@ class SmartSentenceSplitter:
     def _infer_mood(self, text: str) -> str:
         """简单情绪启发式。"""
         mood_map = {
-            "愤怒": "angry", "生气": "angry", "怒": "angry",
-            "悲伤": "sad", "哭了": "sad", "哭": "sad",
-            "开心": "happy", "笑": "happy", "高兴": "happy",
-            "紧张": "tense", "担心": "tense", "急": "tense",
-            "平静": "calm", "安静": "calm",
+            "愤怒": "angry",
+            "生气": "angry",
+            "怒": "angry",
+            "悲伤": "sad",
+            "哭了": "sad",
+            "哭": "sad",
+            "开心": "happy",
+            "笑": "happy",
+            "高兴": "happy",
+            "紧张": "tense",
+            "担心": "tense",
+            "急": "tense",
+            "平静": "calm",
+            "安静": "calm",
         }
         for kw, mood in mood_map.items():
             if kw in text:
@@ -211,6 +216,7 @@ class SmartSentenceSplitter:
 
     def _detect_lang(self, text: str) -> str:
         from .utils.language_detect import detect_language
+
         mode = self.config.get("language", "auto")
         if mode == "auto":
             return detect_language(text)
@@ -244,7 +250,8 @@ class SmartSentenceSplitter:
             return None
 
         import re as _re
-        blocks = _re.findall(r'.*?[。！？；;!?]', text)
+
+        blocks = _re.findall(r".*?[。！？；;!?]", text)
         chunked = []
         current = ""
         for block in blocks:
@@ -312,6 +319,7 @@ class SmartSentenceSplitter:
 
         # 6.5 v0.6: 字数控制策略 (默认 B, 不切)
         from .scene_subtitle.length_segmenter import LengthSegmenter
+
         length_cfg = self.config.get("length", {})
         length_seg = LengthSegmenter(
             strategy=length_cfg.get("strategy", "B"),

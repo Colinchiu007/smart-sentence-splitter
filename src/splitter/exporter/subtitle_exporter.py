@@ -55,9 +55,7 @@ class SubtitleExporter:
                 end = start + sub.duration
                 text = sub.text.replace("\n", " ")
                 blocks.append(
-                    f"{global_index}\n"
-                    f"{self._format_srt_time(start)} --> {self._format_srt_time(end)}\n"
-                    f"{text}\n"
+                    f"{global_index}\n{self._format_srt_time(start)} --> {self._format_srt_time(end)}\n{text}\n"
                 )
                 global_index += 1
             # 累加场景时长

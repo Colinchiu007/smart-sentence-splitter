@@ -6,6 +6,7 @@ from ..languages.en.splitter import EnglishSplitter
 
 class ChineseRuleSplitter(ChineseSplitter):
     """中文规则分句器（强制 Tier 3 模式，不用 jieba）。"""
+
     tier = "tier3_rule"
 
     def __init__(self, config: dict = None):
@@ -16,4 +17,5 @@ class ChineseRuleSplitter(ChineseSplitter):
 
 class EnglishRuleSplitter(EnglishSplitter):
     """英文规则分句器。"""
+
     tier = "tier3_rule"
