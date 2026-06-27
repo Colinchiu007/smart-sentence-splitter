@@ -8,7 +8,7 @@ name = "smart-sentence-splitter"
 version = "0.9.10"
 description = "语义分句引擎：按语义完整性和字数约束自动切割文本，输出结构化分句数据"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "PROJECT-012 Team"}]
 keywords = ["nlp", "sentence-splitter", "chinese", "english", "semantic", "multilingual"]
@@ -24,6 +24,7 @@ classifiers = [
 dependencies = [
     "pydantic>=2.0",
     "PyYAML>=6.0",
+    "shared-models @ file:///D:/Data/projects/shared-models",
 ]
 
 [project.optional-dependencies]
@@ -74,6 +75,4 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 markers = [
     "unit: Unit tests",
-    "integration: Integration tests",
-    "slow: Slow tests (LLM, etc.)",
-]
+    "integration
