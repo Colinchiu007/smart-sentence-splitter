@@ -234,7 +234,7 @@ class TextTiling:
             return []
         if tokens is None:
             tokens = self.tokenize(text)
-        if len(tokens) < self.window_size * 2:
+        if len(tokens) < self.sentence_window * 2:
             return []
 
         # 用字符级旧逻辑
@@ -261,7 +261,7 @@ class TextTiling:
         return result
 
     def _build_tiles(self, tokens: List[str]) -> Tuple[List[List[str]], List[int]]:
-        w = self.window_size
+        w = self.sentence_window
         step = self.step_size
         tiles = []
         start_indices = []

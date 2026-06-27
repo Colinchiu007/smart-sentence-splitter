@@ -76,7 +76,7 @@ class TestTextTilingAlgorithm:
         """双主题文本应识别出至少 1 个边界。"""
         tt = TextTiling(
             min_text_length=20,
-            window_size=10,
+            sentence_window=10,
             step_size=5,
             depth_score_threshold=0.2,
         )
@@ -91,7 +91,7 @@ class TestTextTilingAlgorithm:
         """三主题文本应识别出至少 2 个边界。"""
         tt = TextTiling(
             min_text_length=20,
-            window_size=10,
+            sentence_window=10,
             step_size=5,
             depth_score_threshold=0.2,
         )
@@ -106,7 +106,7 @@ class TestTextTilingAlgorithm:
         """返回的边界应包含 depth_score 字段。"""
         tt = TextTiling(
             min_text_length=20,
-            window_size=10,
+            sentence_window=10,
             step_size=5,
             depth_score_threshold=0.1,
         )
@@ -120,8 +120,8 @@ class TestTextTilingAlgorithm:
 
     def test_threshold_filters_low_confidence(self):
         """高阈值应过滤掉低置信度边界。"""
-        tt_loose = TextTiling(min_text_length=20, window_size=10, step_size=5, depth_score_threshold=0.1)
-        tt_strict = TextTiling(min_text_length=20, window_size=10, step_size=5, depth_score_threshold=0.9)
+        tt_loose = TextTiling(min_text_length=20, sentence_window=10, step_size=5, depth_score_threshold=0.1)
+        tt_strict = TextTiling(min_text_length=20, sentence_window=10, step_size=5, depth_score_threshold=0.9)
         text = (" ".join(["苹果", "香蕉"] * 10) + " " + " ".join(["电脑", "手机"] * 10))
         b_loose = tt_loose.find_boundaries(text)
         b_strict = tt_strict.find_boundaries(text)
@@ -131,7 +131,7 @@ class TestTextTilingAlgorithm:
         """中文长文应能识别主题边界。"""
         tt = TextTiling(
             min_text_length=20,
-            window_size=8,
+            sentence_window=8,
             step_size=4,
             depth_score_threshold=0.15,
         )
@@ -147,7 +147,7 @@ class TestTextTilingAlgorithm:
         """英文长文应能识别主题边界。"""
         tt = TextTiling(
             min_text_length=20,
-            window_size=8,
+            sentence_window=8,
             step_size=4,
             depth_score_threshold=0.15,
         )
@@ -162,7 +162,7 @@ class TestTextTilingAlgorithm:
         """边界应包含前后文文本用于调试。"""
         tt = TextTiling(
             min_text_length=20,
-            window_size=8,
+            sentence_window=8,
             step_size=4,
             depth_score_threshold=0.1,
         )
