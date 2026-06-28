@@ -24,7 +24,7 @@ classifiers = [
 dependencies = [
     "pydantic>=2.0",
     "PyYAML>=6.0",
-    "shared-models @ file:///D:/Data/projects/shared-models",
+    "shared-models @ git+https://github.com/Colinchiu007/shared-models.git",
 ]
 
 [project.optional-dependencies]
@@ -75,4 +75,6 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 markers = [
     "unit: Unit tests",
-    "integration
+    "integration: Integration tests",
+    "slow: Slow tests (LLM, etc.)",
+]
