@@ -284,6 +284,137 @@ def split_batch(req: SplitBatchRequest):
     return SplitBatchResponse(results=results)
 
 
+
+@app.post("/v1/split/stream")
+def split_stream(req: SplitRequest):
+    """POST /v1/split/stream — SSE 流式分句端点。
+
+    对超出 max_input_length 的大文本，按块处理并推送进度事件。
+    小文本直接返回结果。
+
+    SSE 事件:
+      event: progress  → {"chunk_index": int, "chunks_total": int, "sentences_so_far": int}
+      event: result    → SplitResponse JSON（最终完整结果）
+      event: error     → {"detail": str}
+    """
+    config: Dict[str, Any] = {}
+    if req.config:
+        config.update(req.config)
+    config["language"] = req.language
+    config["mode"] = req.mode
+    config["enable_era"] = req.enable_era
+    config["enable_topic_segmentation"] = req.enable_topic_segmentation
+    config["enable_llm"] = req.enable_llm
+
+    try:
+        splitter = SmartSentenceSplitter(config)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Config error: {e}")
+
+    text = req.text
+    max_length = config.get("max_input_length", 200000)
+
+    import json
+
+    def event_stream():
+        # --- 小文本：一次处理，直接返回 ---
+        if len(text) <= max_length:
+            try:
+                result = splitter.split(text)
+            except NotImplementedError as e:
+                yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
+                return
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'detail': f'Split error: {e}'})}\n\n"
+                return
+            resp = _to_response(result, req)
+            yield f"event: result\ndata: {resp.model_dump_json()}\n\n"
+            return
+
+        # --- 大文本：分块处理，推送进度 ---
+        import re as _re
+
+        # 与 pipeline.py _handle_large_text 一致的分块逻辑
+        sent_chars = r"。！？；!?.\n…"
+        sent_re = _re.compile(rf".*?[{sent_chars}]")
+        blocks = sent_re.findall(text)
+
+        if not blocks:
+            blocks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+        else:
+            merged = "".join(blocks)
+            remaining = text[len(merged):]
+            if remaining:
+                blocks.append(remaining)
+
+        chunked = []
+        current = ""
+        for block in blocks:
+            if len(current) + len(block) > max_length:
+                if current.strip():
+                    chunked.append(current.strip())
+                if len(block) > max_length:
+                    for i in range(0, len(block), max_length):
+                        sub = block[i:i + max_length]
+                        if sub.strip():
+                            chunked.append(sub.strip())
+                    current = ""
+                else:
+                    current = block
+            else:
+                current += block
+        if current.strip():
+            chunked.append(current.strip())
+
+        all_sentences = []
+        chunks_total = len(chunked)
+        last_tier = ""
+
+        for i, chunk in enumerate(chunked):
+            try:
+                chunk_result = splitter.split(chunk)
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'detail': f'Chunk {i} error: {e}'})}\n\n"
+                return
+
+            all_sentences.extend(chunk_result.sentences)
+            if chunk_result.tier_used:
+                last_tier = chunk_result.tier_used
+
+            # 推送进度
+            progress = {
+                "chunk_index": i,
+                "chunks_total": chunks_total,
+                "sentences_so_far": len(all_sentences),
+            }
+            yield f"event: progress\ndata: {json.dumps(progress)}\n\n"
+
+        # 合并结果
+        if all_sentences:
+            scenes = splitter.scene_segmenter.segment(all_sentences)
+            for scene in scenes:
+                subtitles = splitter.subtitle_segmenter.segment(scene)
+                scene.subtitles = subtitles
+
+            from splitter.models import SplitResult as SR
+
+            merged_result = SR(
+                sentences=all_sentences,
+                scenes=scenes,
+                tier_used=last_tier,
+                language=splitter._detect_lang(text),
+                config_snapshot=splitter.config,
+            )
+            # 应用 postprocessor
+            merged_result = splitter.postprocessor_chain.run(merged_result)
+            resp = _to_response(merged_result, req)
+            yield f"event: result\ndata: {resp.model_dump_json()}\n\n"
+        else:
+            yield f"event: result\ndata: {json.dumps({'text_length': len(text), 'sentences': [], 'scenes': []})}\n\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
 def _to_response(result: SplitResult, req: SplitRequest) -> SplitResponse:
     """SplitResult → SplitResponse。"""
     sentences = [

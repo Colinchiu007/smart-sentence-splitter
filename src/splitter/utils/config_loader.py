@@ -15,6 +15,7 @@ import yaml
 DEFAULT_CONFIG: Dict[str, Any] = {
     "language": "auto",
     "mode": "balanced",
+    "max_input_length": 200000,  # 大文本截断阈值（>200K 时分块递归处理）
     "enable_era": False,
     "enable_llm": False,
     "enable_script_analysis": False,  # v0.7

@@ -244,28 +244,63 @@ class SmartSentenceSplitter:
         return getattr(self, "_override_min_tier", None) or self.config.get("min_tier", 2)
 
     def _handle_large_text(self, text: str, detected_lang: str) -> Optional[SplitResult]:
-        """借鉴 THULAC __cutRaw：大文本兜底。"""
-        max_length = self.config.get("max_input_length", 50000)
+        """大文本分块兜底。
+
+        改进策略:
+        1. 更全面的句子边界字符（含 \n 和英文句点）
+        2. 无边界时的硬回退（按 max_length 切）
+        3. 超大块子分块（避免递归溢出）
+        """
+        max_length = self.config.get("max_input_length", 200000)
         if len(text) <= max_length:
             return None
 
         import re as _re
 
-        blocks = _re.findall(r".*?[。！？；;!?]", text)
+        # 句子边界字符（含 \n、英文句点、省略号）
+        sent_chars = r"。！？；!?.\n…"
+        sent_re = _re.compile(rf".*?[{sent_chars}]")
+
+        blocks = sent_re.findall(text)
+
+        # 回退 1: 无边界 -> 硬切
+        if not blocks:
+            blocks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+        else:
+            # 回退 2: 补上尾部无标点残留
+            merged = "".join(blocks)
+            remaining = text[len(merged):]
+            if remaining:
+                blocks.append(remaining)
+
         chunked = []
         current = ""
         for block in blocks:
             if len(current) + len(block) > max_length:
-                chunked.append(current.strip())
-                current = block
+                if current.strip():
+                    chunked.append(current.strip())
+                if len(block) > max_length:
+                    # 超大块内部硬切
+                    for i in range(0, len(block), max_length):
+                        sub = block[i:i + max_length]
+                        if sub.strip():
+                            chunked.append(sub.strip())
+                    current = ""
+                else:
+                    current = block
             else:
                 current += block
         if current.strip():
             chunked.append(current.strip())
 
+        # 安全阀：跳过与父文本相同或更大的块（防止递归溢出）
+
         all_sentences = []
         last_tier = ""
         for chunk in chunked:
+            if len(chunk) >= len(text):
+                # 安全阀：跳过大于等于父文本的块
+                continue
             result = self.split(chunk)  # 递归
             all_sentences.extend(result.sentences)
             if result.tier_used:
@@ -282,8 +317,8 @@ class SmartSentenceSplitter:
                 language=detected_lang,
                 config_snapshot=self.config,
             )
+        # 终极回退：让 split() 处理（比递归死循环好）
         return None
-
     def split(self, text: str) -> SplitResult:
         if not text or not text.strip():
             return SplitResult(config_snapshot=self.config)
