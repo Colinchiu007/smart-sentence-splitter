@@ -87,7 +87,7 @@ class SubtitleSegmenter:
 
     def _merge_short(self, blocks: List[str]) -> List[str]:
         """合并 < min_chars 的块或纯标点短块。
-        
+
         规则:
         1. 前一块 < min_chars → 合并
         2. 当前块 <= 2 字且全是标点（含引号） → 无条件合并到前一块
