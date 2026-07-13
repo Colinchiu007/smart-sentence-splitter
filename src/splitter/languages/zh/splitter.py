@@ -244,7 +244,6 @@ class ChineseSplitter(BaseSentenceSplitter):
                         placeholder = f"\u00a7ZHQ{counter}\u00a7"
                         quote_map[placeholder] = open_q + inner_clean + close_q
                         counter += 1
-                        import sys; print('DEBUG inner=%r i_clean=%r tr=%r' % (inner, inner_clean, trailing_eos), file=sys.stderr); sys.stderr.flush()
                         return placeholder + trailing_eos
                     return match.group(0)
 
