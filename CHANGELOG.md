@@ -1,3 +1,62 @@
+## [0.11.0] - 2026-07-13
+
+### ✨ v0.11.0 — 字幕分句规则优化
+
+#### R1: 引号-叙述边界分块 (subtitle_segmenter.py)
+
+- **引号感知预分割**: `_split_at_quote_boundaries` 在引号边界处切分文本
+- 引号内的说话内容与叙述文字分属不同字幕块
+- 避免引号内容跨越 LengthSegmenter 的 max_chars 窗口导致配对锁定
+- 有引号分割时跳过 `_merge_short`，避免引号内容与叙述粘连
+
+#### R2: 超长块强制分割 (subtitle_segmenter.py)
+
+- **`_enforce_max_length`**: 清理后仍超 max_chars 的块强制用标点再分
+- **`_force_split`**: 在块内找最右优先级标点切分，找不到时硬切
+
+#### R3: 分隔线场景过滤 (pipeline.py)
+
+- `_paragraph_aware_segment` 中过滤纯分隔线段落（`---`、`***`、`===`）
+- 避免分隔线生成无意义场景
+
+#### R4: 管线级长句保障 (subtitle_segmenter.py)
+
+- 诊断日志: 超过 max_chars×2 的块输出 warning
+
+#### 新增测试
+
+- TestQuoteAwareSplitting (4 tests)
+- TestEnforceMaxLength (3 tests)
+- TestSeparatorSceneFilter (2 tests)
+
+## [0.10.1] - 2026-06-30
+
+### 🔧 v0.10.1 — 字幕分割质量修复
+
+#### 字幕后处理管线 (subtitle_segmenter.py)
+
+- **末尾标点去除**: 自动清除字幕块末尾的 。！？；，、等标点
+- **跨块引号清理**: 两遍匹配算法 — 块内配对优先，跨块未配对引号删除
+- **开头标点修正**: 标点开头（如 `，悄无声息`）自动移到上一块末尾
+- **4 步管线**: `_clean_subtitle_blocks` 按序执行 开头标点→末尾标点→引号清理→再次标点
+
+#### 切分语义保护 (length_segmenter.py)
+
+- **扩大搜索**: 找不到标点时向后延伸搜索（最多 max_chars×2），避免硬切在词中间
+- **切分校验**: 切分后检查下一块是否以标点开头，自动修正
+- **语义保护**: 数词+量词结构（如 `一/封`）不再被硬切分离
+
+#### 段落感知分段修复 (pipeline.py)
+
+- **按段落独立分句**: 废弃 `text.find()` 反向映射，改为按段落独立调用 tier 链
+- **彻底消除文本错乱**: 引号还原后文本不匹配导致的段落错位问题不再发生
+
+#### 其他
+
+- 纯引号短块合并: 孤立引号字符（如 `"`）合并到相邻块
+- ChineseSplitter: 删除 DEBUG print 语句
+- 新增 7 个单元测试 (372 passed, 9 skipped)
+
 ## [0.10.0] - 2026-06-30
 
 ### 🚀 v0.10.0 — 大文本分块改进 + SSE 流式分句

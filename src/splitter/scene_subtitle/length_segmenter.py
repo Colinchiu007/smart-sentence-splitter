@@ -1,4 +1,4 @@
-﻿"""LengthSegmenter — 字数控制策略（v0.6 新增）.
+"""LengthSegmenter — 字数控制策略（v0.6 新增）.
 
 3 种策略:
 - "off"  透传
@@ -45,6 +45,11 @@ PRIORITY_PUNCTUATION = [
     ":",
     ";",  # 英文弱分隔
 ]
+
+# 常见量词（用于语义保护，避免在数词+量词之间切分）
+_CLASSIFIERS = frozenset(
+    "封艘把件张支根块瓶碗杯条座架辆匹头只朵棵株亩石斗升斤担篇本页则条款扇面幅幅道顿阵回场遍次趟回番种般般"
+)
 
 # 配对引号/括号 — 切分时跳过这些字符避免断在引号中间
 PAIRED_QUOTES = [
@@ -202,8 +207,10 @@ class LengthSegmenter:
     def _resplit(self, text: str) -> List[str]:
         """对单个长文本按字数 + 标点优先级重切。
 
-        配对引号处理: 如果 head 范围内的配对引号被截断 (左在 head 内, 右在 head 外),
-        优先按引号配对切, 避免断在引号中间。
+        v0.10.1 改进:
+        1. 找不到标点时扩大搜索范围（向后延伸到 max_chars * 2），避免硬切在词中间
+        2. 切分后校验：下一块以标点开头时，将标点移入上一块
+        3. 删除了旧版 unreachable code
         """
         if len(text) <= self.max_chars:
             return [text]
@@ -227,9 +234,17 @@ class LengthSegmenter:
                     chunks.append(remaining[: cut_at + head_len])
                     remaining = remaining[cut_at + head_len :]
                 else:
-                    # 实在没招 — 强制按 max_chars 切
-                    chunks.append(remaining[: self.max_chars])
-                    remaining = remaining[self.max_chars :]
+                    # v0.10.1: 扩大搜索范围 — 从 max_chars 向后找下一个优先级标点
+                    extended_cut = self._find_extended_split(remaining)
+                    if extended_cut is not None:
+                        chunks.append(remaining[: extended_cut + 1])
+                        remaining = remaining[extended_cut + 1 :]
+                    else:
+                        # v0.10.1: 语义保护 — 避免在数词+量词之间硬切
+                        cut_pos = self.max_chars
+                        cut_pos = self._adjust_for_semantic(remaining, cut_pos)
+                        chunks.append(remaining[:cut_pos])
+                        remaining = remaining[cut_pos:]
 
         if remaining:
             # 短尾合并：剩余 < min_chars 时合并到上一块，避免孤立断词
@@ -238,7 +253,68 @@ class LengthSegmenter:
             else:
                 chunks.append(remaining)
 
+        # v0.10.1: 切分后校验 — 下一块以标点开头时，将标点移入上一块
+        chunks = self._fix_leading_punctuation(chunks)
+
         return chunks
+
+    def _adjust_for_semantic(self, text: str, cut_pos: int) -> int:
+        """v0.10.1: 语义保护 — 调整硬切位置，避免截断紧密语义结构。
+
+        规则:
+        - 如果 cut_pos 处切分会分离 数词+量词 (如 一/封)，向后移 1 位
+        - 如果 cut_pos 处切分会分离 形容词+的 (如 美丽的/花)，向后移 1 位
+        """
+        if cut_pos >= len(text) or cut_pos < 1:
+            return cut_pos
+
+        prev_char = text[cut_pos - 1]  # 上一块末尾字符
+        next_char = text[cut_pos]  # 下一块开头字符
+
+        # 规则1: 数词 + 量词 — 如 "一/封" "三/艘" "两/只"
+        if next_char in _CLASSIFIERS and prev_char in "一二两三三四五六七八九十两数几":
+            # 向后移 1 位，把量词纳入上一块
+            if cut_pos + 1 < len(text):
+                return cut_pos + 1
+
+        # 规则2: "的" + 名词 — 如 "美丽的/花" 不应在 "的" 后切
+        if prev_char == "的" and cut_pos >= 2:
+            # 不切在 "的" 后面，把 "的" 留给下一块（向前移 1 位）
+            return cut_pos - 1
+
+        return cut_pos
+
+    def _find_extended_split(self, text: str) -> Optional[int]:
+        """v0.10.1: 在 max_chars 之外搜索下一个优先级标点。
+
+        从 max_chars 位置开始向后搜索（最多到 max_chars * 2），
+        找到第一个优先级标点时返回其位置。
+        允许块略超 max_chars，避免硬切在词中间。
+
+        Returns:
+            切分点 index (含标点)，或 None 表示没找到
+        """
+        search_limit = min(len(text), self.max_chars * 2)
+        # 从 max_chars 位置开始向后搜索
+        for i in range(self.max_chars, search_limit):
+            if text[i] in self.priority_punctuation:
+                return i
+        return None
+
+    @staticmethod
+    def _fix_leading_punctuation(chunks: List[str]) -> List[str]:
+        """v0.10.1: 切分后校验 — 如果下一块以标点开头，将标点移入上一块末尾。"""
+        if len(chunks) < 2:
+            return chunks
+        LEADING_PUNCT = frozenset("，、。！？；.!?;")
+        fixed = [chunks[0]]
+        for b in chunks[1:]:
+            if b and b[0] in LEADING_PUNCT:
+                fixed[-1] = fixed[-1] + b[0]
+                b = b[1:]
+            if b:
+                fixed.append(b)
+        return fixed
 
     def _try_paired_quote_split(self, remaining: str) -> Optional[tuple]:
         """检查 remaining 中是否截断了配对引号, 返回 (cut_at, head_len) 或 None。
@@ -275,15 +351,6 @@ class LengthSegmenter:
                 # 配对太长, 试下一个 left
                 i = l + 1
         return None
-
-        if remaining:
-            # 短尾合并：剩余 < min_chars 时合并到上一块，避免孤立断词
-            if chunks and len(remaining) < self.min_chars:
-                chunks[-1] += remaining
-            else:
-                chunks.append(remaining)
-
-        return chunks
 
     def _find_split_position(self, head: str) -> int:
         """在 head 范围内找最合适的切分点。

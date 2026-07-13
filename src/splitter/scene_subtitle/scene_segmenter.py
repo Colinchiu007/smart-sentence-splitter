@@ -1,4 +1,4 @@
-﻿"""Scene segmenter (Layer 2).
+"""Scene segmenter (Layer 2).
 
 将 SentenceBlock 列表合并为 SceneSegment。
 规则：

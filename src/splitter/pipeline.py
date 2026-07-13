@@ -1,4 +1,4 @@
-﻿"""SmartSentenceSplitter - main entry point.
+"""SmartSentenceSplitter - main entry point.
 
 Facade that ties together:
 - Multi-language routing (LanguageRouter)
@@ -35,14 +35,15 @@ from .utils.config_loader import load_config
 import re
 
 # v0.10.0: 分隔线检测
-_SEPARATOR_RE = re.compile(r'^[\s\-\—\*\=\~\•]{2,}$')
+_SEPARATOR_RE = re.compile(r"^[\s\-\—\*\=\~\•]{2,}$")
+
+
 def _is_separator_line(text: str) -> bool:
     """检测是否为纯分隔线 (---, ***, ===, —— 等)。"""
     stripped = text.strip()
     if not stripped:
         return True
     return bool(_SEPARATOR_RE.match(stripped))
-
 
 
 class SmartSentenceSplitter:
@@ -229,72 +230,45 @@ class SmartSentenceSplitter:
             return self._get_era_detector()
         return None
 
-    def _paragraph_aware_segment(
-        self, sentences: List, text: str
-    ) -> List:
+    def _paragraph_aware_segment(self, sentences: List, text: str) -> List:
         """段落感知场景分组。
 
-        按原文的 \\n 将句子映射到所属段落，每个段落独立调用
-        scene_segmenter.segment()，最后合并并统一编号。
-
-        段落边界 = 强制场景边界，不可跨段落合并。
+        v0.10.1 重写: 不再用 text.find() 反向映射句子到段落（引号还原后文本不匹配会导致错乱）。
+        改为按段落独立分句：每个段落独立调用 tier 链分句 + scene_segmenter，
+        最后合并并统一编号。段落边界 = 强制场景边界。
         """
-        if not sentences:
+        if not text or not text.strip():
             return []
 
-        # 1. 提取段落及其在原文中的起始位置
-        paragraphs = []  # [(para_text, start_offset), ...]
-        offset = 0
-        for line in text.split("\n"):
-            stripped = line.strip()
-            if stripped:
-                idx = text.find(stripped, offset)
-                if idx >= 0:
-                    paragraphs.append((stripped, idx))
-                    offset = idx + len(stripped)
-
+        # 1. 提取段落（按 \n 分割，过滤空行）
+        paragraphs = [line.strip() for line in text.split("\n") if line.strip()]
         if not paragraphs:
-            # 回退：无段落信息，走普通分段
             return self.scene_segmenter.segment(sentences)
 
-        # 2. 将每个句子映射到所属段落
-        para_groups: dict = {i: [] for i in range(len(paragraphs))}
-        search_offset = 0
-        for sent in sentences:
-            sent_text = sent.text.strip()
-            if not sent_text:
-                continue
-            # 在原文中查找该句子的位置
-            pos = text.find(sent_text, search_offset)
-            if pos < 0:
-                # 查找失败（可能被引号保护等），尝试从当前位置向后找
-                pos = text.find(sent_text)
-            if pos < 0:
-                # 实在找不到，归入上一个段落
-                para_groups[len(paragraphs) - 1].append(sent)
-                continue
-
-            # 确定属于哪个段落：找 pos 落在哪个段落区间
-            assigned = False
-            for pi in range(len(paragraphs) - 1, -1, -1):
-                if pos >= paragraphs[pi][1]:
-                    para_groups[pi].append(sent)
-                    assigned = True
-                    break
-            if not assigned:
-                para_groups[0].append(sent)
-
-            search_offset = pos + len(sent_text)
-
-        # 3. 每个段落独立做场景分段
+        # 2. 每个段落独立分句 + 场景分割
         all_scenes = []
         scene_id = 0
-        for pi in range(len(paragraphs)):
-            para_sents = para_groups[pi]
-            if not para_sents:
+        for para_text in paragraphs:
+            # v0.11.0 R3: 过滤纯分隔线段落
+            if _is_separator_line(para_text):
                 continue
-            para_scenes = self.scene_segmenter.segment(para_sents)
-            # 3.5 段落内合并短场景
+            # 对该段落独立调用 tier 链分句
+            detected_lang = self._detect_lang(para_text)
+            if detected_lang == "en":
+                chain = self._en_chain
+            elif detected_lang == "ja":
+                chain = self._ja_chain
+            else:
+                chain = self._zh_chain
+
+            para_sentences, _tier = chain.split(para_text)
+
+            if not para_sentences:
+                continue
+
+            # 段落内场景分割
+            para_scenes = self.scene_segmenter.segment(para_sentences)
+            # 段落内合并短场景
             para_scenes = self._merge_short_scenes(
                 para_scenes,
                 merge_threshold=self.config.get("scene", {}).get("target_seconds", 12.0),
@@ -405,11 +379,11 @@ class SmartSentenceSplitter:
 
         # 回退 1: 无边界 -> 硬切
         if not blocks:
-            blocks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+            blocks = [text[i : i + max_length] for i in range(0, len(text), max_length)]
         else:
             # 回退 2: 补上尾部无标点残留
             merged = "".join(blocks)
-            remaining = text[len(merged):]
+            remaining = text[len(merged) :]
             if remaining:
                 blocks.append(remaining)
 
@@ -422,7 +396,7 @@ class SmartSentenceSplitter:
                 if len(block) > max_length:
                     # 超大块内部硬切
                     for i in range(0, len(block), max_length):
-                        sub = block[i:i + max_length]
+                        sub = block[i : i + max_length]
                         if sub.strip():
                             chunked.append(sub.strip())
                     current = ""
@@ -459,6 +433,7 @@ class SmartSentenceSplitter:
             )
         # 终极回退：让 split() 处理（比递归死循环好）
         return None
+
     def split(self, text: str) -> SplitResult:
         if not text or not text.strip():
             return SplitResult(config_snapshot=self.config)

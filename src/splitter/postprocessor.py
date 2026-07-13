@@ -98,11 +98,12 @@ class CustomMergingProcessor(BasePostprocessor):
             result.sentences = new_sentences
         return result
 
+
 class SeparatorLineProcessor(BasePostprocessor):
     """过滤纯分隔线句子 (---, ***, ===, —— 等)。"""
 
     name = "separator_line"
-    SEPARATOR_RE = re.compile(r'^[\s\-—\*\=\~\•]{2,}$')
+    SEPARATOR_RE = re.compile(r"^[\s\-—\*\=\~\•]{2,}$")
 
     def adjust(self, result: SplitResult) -> SplitResult:
         if not result.sentences:

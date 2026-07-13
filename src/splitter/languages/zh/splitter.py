@@ -1,4 +1,4 @@
-﻿"""中文规则分句器（Tier 3）+ jieba 增强（Tier 2）。
+"""中文规则分句器（Tier 3）+ jieba 增强（Tier 2）。
 
 Tier 3 (基础规则):
 - 按 。！？；… 切分
@@ -240,11 +240,10 @@ class ChineseSplitter(BaseSentenceSplitter):
                     if any(p in inner for p in "。！？；.!?;"):
                         # 剥离尾部句末标点，保留在占位符外让 EOS 检测可见
                         inner_clean = inner.rstrip("。！？；.!?;")
-                        trailing_eos = inner[len(inner_clean):]
+                        trailing_eos = inner[len(inner_clean) :]
                         placeholder = f"\u00a7ZHQ{counter}\u00a7"
                         quote_map[placeholder] = open_q + inner_clean + close_q
                         counter += 1
-                        import sys; print('DEBUG inner=%r i_clean=%r tr=%r' % (inner, inner_clean, trailing_eos), file=sys.stderr); sys.stderr.flush()
                         return placeholder + trailing_eos
                     return match.group(0)
 
@@ -283,4 +282,3 @@ class ChineseSplitter(BaseSentenceSplitter):
                 result.append(self._make_block_with_metadata(p, idx))
                 idx += 1
         return result
-
