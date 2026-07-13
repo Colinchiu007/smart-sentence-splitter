@@ -87,7 +87,7 @@ class ChineseSplitter(BaseSentenceSplitter):
     # EOS 窗口大小（从 HanLP EOS N-gram 借鉴）
     EOS_WINDOW = 5
     # 候选句末标点
-    EOS_CHARS = set("。！？；.!?;")
+    EOS_CHARS = set("。！？；.!?;\n")
     # 英文/数字字符集（用于缩写检测）
     EN_NUM_PATTERN = re.compile(r"^[a-zA-Z0-9]{4,}$")
 

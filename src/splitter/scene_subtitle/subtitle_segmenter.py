@@ -61,7 +61,8 @@ class SubtitleSegmenter:
         for b in blocks[1:]:
             b_stripped = b.strip()
             is_punct_tail = len(b_stripped) <= 2 and all(c in "\u3002\uff01\uff1f\uff1b\u3001.!?;\u2026" for c in b_stripped)
-            if len(merged[-1]) < self.min_chars or is_punct_tail:
+            is_short_tail = len(b_stripped) <= 3 and len(merged[-1]) >= self.min_chars
+            if len(merged[-1]) < self.min_chars or is_punct_tail or is_short_tail:
                 merged[-1] = merged[-1] + b
             else:
                 merged.append(b)

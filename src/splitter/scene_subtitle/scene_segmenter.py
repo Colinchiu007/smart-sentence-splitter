@@ -1,4 +1,4 @@
-"""Scene segmenter (Layer 2).
+﻿"""Scene segmenter (Layer 2).
 
 将 SentenceBlock 列表合并为 SceneSegment。
 规则：
@@ -69,6 +69,10 @@ class SceneSegmenter:
                 current_sentences.append(sentence)
                 current_word_count += sentence_len
             elif current_word_count + sentence_len <= effective_target:
+                current_sentences.append(sentence)
+                current_word_count += sentence_len
+            elif self.allow_single_sentence_overflow and len(current_sentences) <= 1:
+                # 允许单句溢出: 当前场景只有1句时继续追加，避免孤立场景
                 current_sentences.append(sentence)
                 current_word_count += sentence_len
             else:
