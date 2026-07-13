@@ -62,43 +62,14 @@ MVP 拆成 ≤4h 的任务。
 - 更新 README 特性列表
 - git 提交并 tag
 
-## 质量门禁
 
-**PRD 阶段**：分句策略明确 / 多语言范围清晰 / 验收标准可验证
-**设计阶段**：Tier 链设计完整 / 最简单方案
-**开发阶段**：测试全通过 / 手动验证核心功能 / 降级链验证
-**Review 阶段**：CRITICAL 问题已修复 / 接口兼容性
+## 详细规范
 
-## TDD 流程
+本文档只包含开发流程框架。详细规范已拆分到 `references/` 子目录：
 
-```
-RED   → 在 tests/unit/ 下写失败测试
-GREEN → 最小实现让测试通过
-REFACTOR → 重构，保持测试通过
-```
-
-### 测试组织
-
-```
-tests/
-+-- unit/                    # 单元测试
-|   +-- test_zh_splitter.py
-|   +-- test_en_splitter.py
-|   +-- test_texttiling.py
-|   +-- test_length_segmenter.py
-+-- integration/             # 集成测试
-    +-- test_v3.py           # 后处理器集成
-    +-- test_v5.py           # REST API 集成
-```
-
-## 提交规范
-
-```
-feat(zh): 新增中文间接问句分句规则
-fix(tier): 修复 LLM Tier 超时不降级
-docs: 更新 PRD 分句策略章节
-refactor: 统一 postprocessor 注册方式
-```
+- **[references/testing.md](references/testing.md)** — TDD 流程与测试规范
+- **[references/quality-gates.md](references/quality-gates.md)** — 质量门禁详细说明
+- **[references/commits.md](references/commits.md)** — 提交规范
 
 ## 文档清单
 

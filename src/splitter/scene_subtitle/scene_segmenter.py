@@ -1,4 +1,4 @@
-"""Scene segmenter (Layer 2).
+﻿"""Scene segmenter (Layer 2).
 
 将 SentenceBlock 列表合并为 SceneSegment。
 规则：
@@ -71,6 +71,10 @@ class SceneSegmenter:
             elif current_word_count + sentence_len <= effective_target:
                 current_sentences.append(sentence)
                 current_word_count += sentence_len
+            elif self.allow_single_sentence_overflow and len(current_sentences) <= 1:
+                # 允许单句溢出: 当前场景只有1句时继续追加，避免孤立场景
+                current_sentences.append(sentence)
+                current_word_count += sentence_len
             else:
                 scenes.append(self._create_scene(current_sentences[:], current_word_count, scene_id))
                 scene_id += 1
@@ -83,14 +87,29 @@ class SceneSegmenter:
 
         return scenes
 
+    TERMINAL_PUNCTUATION = frozenset("。！？；.!?;\n")
+
     def _create_scene(
         self,
         sentences: List[SentenceBlock],
         word_count: int,
         scene_id: int,
     ) -> SceneSegment:
-        """构造 SceneSegment。"""
-        text = "".join(s.text for s in sentences)
+        """构造 SceneSegment。
+
+        拼接句子时，若前句无终止标点且后句非空，自动补句号避免粘连。
+        """
+        parts = []
+        for i, s in enumerate(sentences):
+            if i > 0 and s.text.strip():
+                prev = parts[-1]
+                if prev and prev[-1] not in self.TERMINAL_PUNCTUATION:
+                    parts.append("。" + s.text)
+                else:
+                    parts.append(s.text)
+            else:
+                parts.append(s.text)
+        text = "".join(parts)
         estimated_duration = word_count / (self.base_words_per_second * self.speech_rate)
         return SceneSegment(
             text=text,

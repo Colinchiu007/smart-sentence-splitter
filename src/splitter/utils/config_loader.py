@@ -15,9 +15,11 @@ import yaml
 DEFAULT_CONFIG: Dict[str, Any] = {
     "language": "auto",
     "mode": "balanced",
+    "max_input_length": 200000,  # 大文本截断阈值（>200K 时分块递归处理）
     "enable_era": False,
     "enable_llm": False,
     "enable_script_analysis": False,  # v0.7
+    "enable_paragraph_aware": False,  # 段落感知场景分组（视频管线推荐 True）
     "enable_topic_segmentation": False,
     "min_tier": 2,
     "sentence_tokenizer": {

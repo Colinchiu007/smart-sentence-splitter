@@ -5,6 +5,7 @@
 """
 
 from __future__ import annotations
+import re
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
@@ -96,3 +97,25 @@ class CustomMergingProcessor(BasePostprocessor):
                 )
             result.sentences = new_sentences
         return result
+
+class SeparatorLineProcessor(BasePostprocessor):
+    """过滤纯分隔线句子 (---, ***, ===, —— 等)。"""
+
+    name = "separator_line"
+    SEPARATOR_RE = re.compile(r'^[\s\-—\*\=\~\•]{2,}$')
+
+    def adjust(self, result: SplitResult) -> SplitResult:
+        if not result.sentences:
+            return result
+        result.sentences = [s for s in result.sentences if not self._is_separator(s.text)]
+        return result
+
+    @classmethod
+    def _is_separator(cls, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return True
+        # 纯分隔符行: ---, ***, ===, ——, ••, 等
+        if cls.SEPARATOR_RE.match(stripped):
+            return True
+        return False

@@ -1,4 +1,4 @@
-"""LengthSegmenter — 字数控制策略（v0.6 新增）.
+﻿"""LengthSegmenter — 字数控制策略（v0.6 新增）.
 
 3 种策略:
 - "off"  透传
@@ -232,7 +232,11 @@ class LengthSegmenter:
                     remaining = remaining[self.max_chars :]
 
         if remaining:
-            chunks.append(remaining)
+            # 短尾合并：剩余 < min_chars 时合并到上一块，避免孤立断词
+            if chunks and len(remaining) < self.min_chars:
+                chunks[-1] += remaining
+            else:
+                chunks.append(remaining)
 
         return chunks
 
@@ -273,7 +277,11 @@ class LengthSegmenter:
         return None
 
         if remaining:
-            chunks.append(remaining)
+            # 短尾合并：剩余 < min_chars 时合并到上一块，避免孤立断词
+            if chunks and len(remaining) < self.min_chars:
+                chunks[-1] += remaining
+            else:
+                chunks.append(remaining)
 
         return chunks
 

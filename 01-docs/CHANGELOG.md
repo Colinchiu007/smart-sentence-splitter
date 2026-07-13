@@ -1,3 +1,29 @@
+## [0.10.0] - 2026-06-30
+
+### 🚀 v0.10.0 — 大文本分块改进 + SSE 流式分句
+
+#### 大文本分块策略改进
+
+- **max_input_length 默认值**: 50K → 200K（config_loader.py + pipeline.py）
+- **更全面的句子边界字符**: 新增英文句点 `.` / 换行 `\n` / 省略号 `…`
+- **无标点硬回退**: 无句子边界时按 max_length 字符硬切，避免递归溢出
+- **超大块子分块**: 单个句子块超过 max_length 时内部硬切，彻底消除 RecursionError
+- **安全阀**: 递归时跳过与父文本相同或更大的块，防止死循环
+
+#### SSE 流式分句端点
+
+- **新增 `POST /v1/split/stream`**: SSE (text/event-stream) 协议
+- **事件类型**:
+  - `event: progress` — 大文本分块进度（chunk_index, chunks_total, sentences_so_far）
+  - `event: result` — 最终完整 SplitResponse JSON
+  - `event: error` — 错误信息
+- 小文本（≤max_input_length）直接返回单个 result 事件
+- 大文本按块处理，每完成一块推送一次进度，最后合并推送完整结果
+
+#### 📊 测试
+
+- 新增 6 个 SSE 流式测试 + 11 个大文本分块测试 = **365 passed + 9 skipped** ✅
+
 ## [0.9.10] - 2026-06-14
 
 ### 🚀 v0.9.10 — 语义段落检测优化
