@@ -87,14 +87,29 @@ class SceneSegmenter:
 
         return scenes
 
+    TERMINAL_PUNCTUATION = frozenset("。！？；.!?;\n")
+
     def _create_scene(
         self,
         sentences: List[SentenceBlock],
         word_count: int,
         scene_id: int,
     ) -> SceneSegment:
-        """构造 SceneSegment。"""
-        text = "".join(s.text for s in sentences)
+        """构造 SceneSegment。
+
+        拼接句子时，若前句无终止标点且后句非空，自动补句号避免粘连。
+        """
+        parts = []
+        for i, s in enumerate(sentences):
+            if i > 0 and s.text.strip():
+                prev = parts[-1]
+                if prev and prev[-1] not in self.TERMINAL_PUNCTUATION:
+                    parts.append("。" + s.text)
+                else:
+                    parts.append(s.text)
+            else:
+                parts.append(s.text)
+        text = "".join(parts)
         estimated_duration = word_count / (self.base_words_per_second * self.speech_rate)
         return SceneSegment(
             text=text,

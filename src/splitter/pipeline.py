@@ -1,4 +1,4 @@
-"""SmartSentenceSplitter - main entry point.
+﻿"""SmartSentenceSplitter - main entry point.
 
 Facade that ties together:
 - Multi-language routing (LanguageRouter)
@@ -27,10 +27,22 @@ from .scene_subtitle.scene_segmenter import SceneSegmenter
 from .scene_subtitle.subtitle_segmenter import SubtitleSegmenter
 from .models import SplitResult
 from .postprocessor import (
+    SeparatorLineProcessor,
     BasePostprocessor,
     PostprocessorChain,
 )
 from .utils.config_loader import load_config
+import re
+
+# v0.10.0: 分隔线检测
+_SEPARATOR_RE = re.compile(r'^[\s\-\—\*\=\~\•]{2,}$')
+def _is_separator_line(text: str) -> bool:
+    """检测是否为纯分隔线 (---, ***, ===, —— 等)。"""
+    stripped = text.strip()
+    if not stripped:
+        return True
+    return bool(_SEPARATOR_RE.match(stripped))
+
 
 
 class SmartSentenceSplitter:
@@ -119,6 +131,9 @@ class SmartSentenceSplitter:
 
     def _init_postprocessors(self):
         """F5: 初始化 postprocessor chain。"""
+        # v0.10.0: 始终启用 — 过滤纯分隔线
+        self.postprocessor_chain.add(SeparatorLineProcessor())
+
         # F6: EraPostprocessor（lazy 检测）
         if self.config.get("enable_era", False):
             from .era.postprocessor import EraPostprocessor
@@ -489,6 +504,9 @@ class SmartSentenceSplitter:
             warning_on_violation=length_cfg.get("warning_on_violation", True),
         )
         sentences = length_seg.segment(sentences)
+
+        # v0.10.0: 过滤纯分隔线 (必须在场景分割前)
+        sentences = [s for s in sentences if not _is_separator_line(s.text)]
 
         # 7. 场景级分割
         if self.config.get("enable_paragraph_aware", False):
