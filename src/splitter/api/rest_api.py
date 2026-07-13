@@ -284,7 +284,6 @@ def split_batch(req: SplitBatchRequest):
     return SplitBatchResponse(results=results)
 
 
-
 @app.post("/v1/split/stream")
 def split_stream(req: SplitRequest):
     """POST /v1/split/stream — SSE 流式分句端点。
@@ -340,10 +339,10 @@ def split_stream(req: SplitRequest):
         blocks = sent_re.findall(text)
 
         if not blocks:
-            blocks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+            blocks = [text[i : i + max_length] for i in range(0, len(text), max_length)]
         else:
             merged = "".join(blocks)
-            remaining = text[len(merged):]
+            remaining = text[len(merged) :]
             if remaining:
                 blocks.append(remaining)
 
@@ -355,7 +354,7 @@ def split_stream(req: SplitRequest):
                     chunked.append(current.strip())
                 if len(block) > max_length:
                     for i in range(0, len(block), max_length):
-                        sub = block[i:i + max_length]
+                        sub = block[i : i + max_length]
                         if sub.strip():
                             chunked.append(sub.strip())
                     current = ""
@@ -413,7 +412,9 @@ def split_stream(req: SplitRequest):
             yield f"event: result\ndata: {json.dumps({'text_length': len(text), 'sentences': [], 'scenes': []})}\n\n"
 
     from fastapi.responses import StreamingResponse
+
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
 
 def _to_response(result: SplitResult, req: SplitRequest) -> SplitResponse:
     """SplitResult → SplitResponse。"""

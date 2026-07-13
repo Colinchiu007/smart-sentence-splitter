@@ -1,4 +1,4 @@
-﻿"""Subtitle segmenter (Layer 3).
+"""Subtitle segmenter (Layer 3).
 
 将 SceneSegment 内的文本切分为 8-15 字的字幕块。
 
@@ -21,8 +21,8 @@ _TRAILING_PUNCT = frozenset("。！？；，、.!?;…\n")
 _PUNCT_CHARS = frozenset("。！？；，、.!?;…\n\"'\"\"''「」『』《》（）()[]【】{}§")
 # 跨块引号对
 _CROSS_BLOCK_QUOTES = [
-    ('\u201c', '\u201d'),  # " "
-    ('\u300c', '\u300d'),  # 「 」
+    ("\u201c", "\u201d"),  # " "
+    ("\u300c", "\u300d"),  # 「 」
     ('"', '"'),
     ("'", "'"),
 ]
@@ -38,6 +38,7 @@ class SubtitleSegmenter:
         self.time_method = self.config.get("time_calculation_method", "proportional")
         # v0.9.2: 复用 LengthSegmenter A 模式 (配对引号保护)
         from .length_segmenter import LengthSegmenter
+
         self._length_seg = LengthSegmenter(
             strategy="A",
             min_chars=self.min_chars,
@@ -68,9 +69,7 @@ class SubtitleSegmenter:
         # v0.11.0: 诊断日志 — 检测超长块
         for b in blocks:
             if len(b) > self.max_chars * 2:
-                logger.warning(
-                    f"Block too long after split: {len(b)} chars: {b[:30]}..."
-                )
+                logger.warning(f"Block too long after split: {len(b)} chars: {b[:30]}...")
 
         # 后处理: 把太短的首块合并到上一块, 末尾太短合并到上一块
         # v0.11.0: 有引号分割时跳过合并，避免引号内容与叙述粘连
@@ -233,8 +232,8 @@ class SubtitleSegmenter:
 
     # v0.11.0: 引号感知预分割
     _QUOTE_PAIRS = [
-        ('\u201c', '\u201d'),  # " "
-        ('\u300c', '\u300d'),  # 「 」
+        ("\u201c", "\u201d"),  # " "
+        ("\u300c", "\u300d"),  # 「 」
         ('"', '"'),
         ("'", "'"),
     ]
@@ -288,7 +287,7 @@ class SubtitleSegmenter:
                     fragments.append(before)
 
             # 引号内的内容（含引号）
-            quote_content = text[start:end + 1]
+            quote_content = text[start : end + 1]
             # 检查闭合引号后是否有紧跟的标点（如 ？！，）
             after_pos = end + 1
             if after_pos < len(text) and text[after_pos] in _TRAILING_PUNCT:
@@ -384,13 +383,15 @@ class SubtitleSegmenter:
         block_dur = parent_duration / len(blocks)
         result = []
         for i, text in enumerate(blocks):
-            result.append(SubtitleBlock(
-                text=text,
-                display_order=i,
-                start_time=i * block_dur,
-                duration=block_dur,
-                parent_segment_id=parent_id,
-            ))
+            result.append(
+                SubtitleBlock(
+                    text=text,
+                    display_order=i,
+                    start_time=i * block_dur,
+                    duration=block_dur,
+                    parent_segment_id=parent_id,
+                )
+            )
         return result
 
     def _proportional_timestamps(
@@ -408,12 +409,14 @@ class SubtitleSegmenter:
         current_time = 0.0
         for i, text in enumerate(blocks):
             dur = (len(text) / total_chars) * parent_duration
-            result.append(SubtitleBlock(
-                text=text,
-                display_order=i,
-                start_time=current_time,
-                duration=dur,
-                parent_segment_id=parent_id,
-            ))
+            result.append(
+                SubtitleBlock(
+                    text=text,
+                    display_order=i,
+                    start_time=current_time,
+                    duration=dur,
+                    parent_segment_id=parent_id,
+                )
+            )
             current_time += dur
         return result

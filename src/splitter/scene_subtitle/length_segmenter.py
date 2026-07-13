@@ -1,4 +1,4 @@
-﻿"""LengthSegmenter — 字数控制策略（v0.6 新增）.
+"""LengthSegmenter — 字数控制策略（v0.6 新增）.
 
 3 种策略:
 - "off"  透传
@@ -48,8 +48,7 @@ PRIORITY_PUNCTUATION = [
 
 # 常见量词（用于语义保护，避免在数词+量词之间切分）
 _CLASSIFIERS = frozenset(
-    "封艘把件张支根块瓶碗杯条座架辆匹头只朵棵株亩石斗升斤担"
-    "篇本页则条款扇面幅幅道顿阵回场遍次趟回番种般般"
+    "封艘把件张支根块瓶碗杯条座架辆匹头只朵棵株亩石斗升斤担篇本页则条款扇面幅幅道顿阵回场遍次趟回番种般般"
 )
 
 # 配对引号/括号 — 切分时跳过这些字符避免断在引号中间
@@ -270,7 +269,7 @@ class LengthSegmenter:
             return cut_pos
 
         prev_char = text[cut_pos - 1]  # 上一块末尾字符
-        next_char = text[cut_pos]      # 下一块开头字符
+        next_char = text[cut_pos]  # 下一块开头字符
 
         # 规则1: 数词 + 量词 — 如 "一/封" "三/艘" "两/只"
         if next_char in _CLASSIFIERS and prev_char in "一二两三三四五六七八九十两数几":

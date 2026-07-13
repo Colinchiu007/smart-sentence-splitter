@@ -1,4 +1,4 @@
-﻿"""SmartSentenceSplitter - main entry point.
+"""SmartSentenceSplitter - main entry point.
 
 Facade that ties together:
 - Multi-language routing (LanguageRouter)
@@ -35,14 +35,15 @@ from .utils.config_loader import load_config
 import re
 
 # v0.10.0: 分隔线检测
-_SEPARATOR_RE = re.compile(r'^[\s\-\—\*\=\~\•]{2,}$')
+_SEPARATOR_RE = re.compile(r"^[\s\-\—\*\=\~\•]{2,}$")
+
+
 def _is_separator_line(text: str) -> bool:
     """检测是否为纯分隔线 (---, ***, ===, —— 等)。"""
     stripped = text.strip()
     if not stripped:
         return True
     return bool(_SEPARATOR_RE.match(stripped))
-
 
 
 class SmartSentenceSplitter:
@@ -229,9 +230,7 @@ class SmartSentenceSplitter:
             return self._get_era_detector()
         return None
 
-    def _paragraph_aware_segment(
-        self, sentences: List, text: str
-    ) -> List:
+    def _paragraph_aware_segment(self, sentences: List, text: str) -> List:
         """段落感知场景分组。
 
         v0.10.1 重写: 不再用 text.find() 反向映射句子到段落（引号还原后文本不匹配会导致错乱）。
@@ -380,11 +379,11 @@ class SmartSentenceSplitter:
 
         # 回退 1: 无边界 -> 硬切
         if not blocks:
-            blocks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+            blocks = [text[i : i + max_length] for i in range(0, len(text), max_length)]
         else:
             # 回退 2: 补上尾部无标点残留
             merged = "".join(blocks)
-            remaining = text[len(merged):]
+            remaining = text[len(merged) :]
             if remaining:
                 blocks.append(remaining)
 
@@ -397,7 +396,7 @@ class SmartSentenceSplitter:
                 if len(block) > max_length:
                     # 超大块内部硬切
                     for i in range(0, len(block), max_length):
-                        sub = block[i:i + max_length]
+                        sub = block[i : i + max_length]
                         if sub.strip():
                             chunked.append(sub.strip())
                     current = ""
@@ -434,6 +433,7 @@ class SmartSentenceSplitter:
             )
         # 终极回退：让 split() 处理（比递归死循环好）
         return None
+
     def split(self, text: str) -> SplitResult:
         if not text or not text.strip():
             return SplitResult(config_snapshot=self.config)
