@@ -250,6 +250,9 @@ class SmartSentenceSplitter:
         all_scenes = []
         scene_id = 0
         for para_text in paragraphs:
+            # v0.11.0 R3: 过滤纯分隔线段落
+            if _is_separator_line(para_text):
+                continue
             # 对该段落独立调用 tier 链分句
             detected_lang = self._detect_lang(para_text)
             if detected_lang == "en":

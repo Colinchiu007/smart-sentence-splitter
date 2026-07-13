@@ -4,12 +4,16 @@
 
 v0.9.2 改动: 复用 LengthSegmenter 配对引号保护 — 不再自己实现切分。
 v0.10.1 改动: 字幕后处理 — 末尾标点去除、跨块引号清理、开头标点修正。
+v0.11.0 改动: 引号感知预分割 + 超长块强制再分割 + 诊断日志。
 """
 
 from __future__ import annotations
 from typing import List
+import logging
 
 from ..models import SubtitleBlock, SceneSegment
+
+logger = logging.getLogger(__name__)
 
 # 句末/句内标点（用于末尾去除和开头检测）
 _TRAILING_PUNCT = frozenset("。！？；，、.!?;…\n")
@@ -49,18 +53,35 @@ class SubtitleSegmenter:
         if not text or not text.strip():
             return []
 
-        # v0.9.2: 用 LengthSegmenter 切 (配对引号保护)
-        blocks = self._length_seg.split_text(text)
+        # v0.11.0: 引号感知预分割 — 在引号边界处切分，避免说话内容与叙述粘连
+        fragments = self._split_at_quote_boundaries(text)
+        has_quotes = len(fragments) > 1
 
-        # LengthSegmenter._resplit 不会切 < max_chars 的短文本, 强制至少切一块
-        if not blocks:
-            blocks = [text]
+        # 对每个片段独立做字数切分
+        blocks: List[str] = []
+        for frag in fragments:
+            frag_blocks = self._length_seg.split_text(frag)
+            if not frag_blocks:
+                frag_blocks = [frag]
+            blocks.extend(frag_blocks)
+
+        # v0.11.0: 诊断日志 — 检测超长块
+        for b in blocks:
+            if len(b) > self.max_chars * 2:
+                logger.warning(
+                    f"Block too long after split: {len(b)} chars: {b[:30]}..."
+                )
 
         # 后处理: 把太短的首块合并到上一块, 末尾太短合并到上一块
-        blocks = self._merge_short(blocks)
+        # v0.11.0: 有引号分割时跳过合并，避免引号内容与叙述粘连
+        if not has_quotes:
+            blocks = self._merge_short(blocks)
 
         # v0.10.1: 字幕后处理 — 开头标点修正、末尾标点去除、跨块引号清理
         blocks = self._clean_subtitle_blocks(blocks)
+
+        # v0.11.0: 超长块强制再分割 — 清理/合并后仍超 max_chars 的块强制再切
+        blocks = self._enforce_max_length(blocks)
 
         return self._assign_timestamps(blocks, parent_duration, parent_id)
 
@@ -209,6 +230,135 @@ class SubtitleSegmenter:
         blocks = [b for b in blocks if b.strip()]
 
         return blocks
+
+    # v0.11.0: 引号感知预分割
+    _QUOTE_PAIRS = [
+        ('\u201c', '\u201d'),  # " "
+        ('\u300c', '\u300d'),  # 「 」
+        ('"', '"'),
+        ("'", "'"),
+    ]
+
+    def _split_at_quote_boundaries(self, text: str) -> List[str]:
+        """v0.11.0 R1: 在引号边界处预分割文本。
+
+        规则:
+        - 每对引号（含内部标点）作为一个独立片段
+        - 引号后的叙述文字作为另一个片段
+        - 避免引号内容跨越 LengthSegmenter 的 max_chars 窗口导致配对锁定
+
+        示例:
+        - '"不对，"宴会散后...' → ['"不对，"', '宴会散后...']
+        - '"异教徒！"他们狞笑着。' → ['"异教徒！"', '他们狞笑着。']
+        - '质问："天朝...？' → ['质问：', '"天朝...？']
+        """
+        if not text:
+            return [text] if text else []
+
+        # 找到所有引号对的 (start, end) 位置
+        quote_spans = []  # (start_idx, end_idx) inclusive
+        for lq, rq in self._QUOTE_PAIRS:
+            i = 0
+            while i < len(text):
+                l = text.find(lq, i)
+                if l < 0:
+                    break
+                r = text.find(rq, l + 1)
+                if r < 0:
+                    break  # 未闭合引号，跳过
+                quote_spans.append((l, r))
+                i = r + 1
+
+        if not quote_spans:
+            return [text]
+
+        # 按起始位置排序
+        quote_spans.sort()
+
+        # 在每个引号对的闭合引号后切分
+        # 切分点 = 闭合引号位置 + 1（含闭合引号后的紧跟标点）
+        fragments = []
+        prev_end = 0
+
+        for start, end in quote_spans:
+            # 引号前的文本（叙述部分）
+            if start > prev_end:
+                before = text[prev_end:start]
+                if before.strip():
+                    fragments.append(before)
+
+            # 引号内的内容（含引号）
+            quote_content = text[start:end + 1]
+            # 检查闭合引号后是否有紧跟的标点（如 ？！，）
+            after_pos = end + 1
+            if after_pos < len(text) and text[after_pos] in _TRAILING_PUNCT:
+                quote_content += text[after_pos]
+                after_pos += 1
+            fragments.append(quote_content)
+            prev_end = after_pos
+
+        # 剩余文本（最后一个引号后的叙述）
+        if prev_end < len(text):
+            remaining = text[prev_end:]
+            if remaining.strip():
+                fragments.append(remaining)
+
+        return fragments if fragments else [text]
+
+    def _enforce_max_length(self, blocks: List[str]) -> List[str]:
+        """v0.11.0 R2: 清理后仍超过 max_chars 的块，强制用标点再分。
+
+        逻辑:
+        1. 遍历每个块，如果 len > max_chars
+        2. 在块内找优先级标点切分
+        3. 找不到标点时，在 max_chars 位置硬切
+        4. 短尾合并到前一块
+        """
+        SPLIT_PUNCT = frozenset("，、。！？；：.!?;:")
+        result = []
+
+        for block in blocks:
+            if len(block) <= self.max_chars:
+                result.append(block)
+                continue
+
+            # 需要再分
+            sub_blocks = self._force_split(block, self.max_chars, SPLIT_PUNCT)
+            result.extend(sub_blocks)
+
+        return result
+
+    @staticmethod
+    def _force_split(text: str, max_chars: int, punct_set: frozenset) -> List[str]:
+        """将超长文本按标点或硬切分成 <= max_chars 的块。"""
+        chunks = []
+        remaining = text
+
+        while len(remaining) > max_chars:
+            # 在 remaining[:max_chars] 内找最右的优先级标点
+            head = remaining[:max_chars]
+            best = 0
+            for i in range(len(head) - 1, -1, -1):
+                if head[i] in punct_set:
+                    best = i + 1  # 含标点
+                    break
+
+            if best > 0:
+                chunks.append(remaining[:best])
+                remaining = remaining[best:]
+            else:
+                # 找不到标点 — 硬切
+                chunks.append(remaining[:max_chars])
+                remaining = remaining[max_chars:]
+
+        if remaining:
+            # 短尾合并：仅当合并后仍 <= max_chars 时才合并
+            if chunks and len(remaining) < 3 and len(chunks[-1]) + len(remaining) <= max_chars:
+                chunks[-1] += remaining
+            else:
+                chunks.append(remaining)
+
+        return chunks
 
     def _assign_timestamps(
         self,

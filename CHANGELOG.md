@@ -1,3 +1,34 @@
+## [0.11.0] - 2026-07-13
+
+### ✨ v0.11.0 — 字幕分句规则优化
+
+#### R1: 引号-叙述边界分块 (subtitle_segmenter.py)
+
+- **引号感知预分割**: `_split_at_quote_boundaries` 在引号边界处切分文本
+- 引号内的说话内容与叙述文字分属不同字幕块
+- 避免引号内容跨越 LengthSegmenter 的 max_chars 窗口导致配对锁定
+- 有引号分割时跳过 `_merge_short`，避免引号内容与叙述粘连
+
+#### R2: 超长块强制分割 (subtitle_segmenter.py)
+
+- **`_enforce_max_length`**: 清理后仍超 max_chars 的块强制用标点再分
+- **`_force_split`**: 在块内找最右优先级标点切分，找不到时硬切
+
+#### R3: 分隔线场景过滤 (pipeline.py)
+
+- `_paragraph_aware_segment` 中过滤纯分隔线段落（`---`、`***`、`===`）
+- 避免分隔线生成无意义场景
+
+#### R4: 管线级长句保障 (subtitle_segmenter.py)
+
+- 诊断日志: 超过 max_chars×2 的块输出 warning
+
+#### 新增测试
+
+- TestQuoteAwareSplitting (4 tests)
+- TestEnforceMaxLength (3 tests)
+- TestSeparatorSceneFilter (2 tests)
+
 ## [0.10.1] - 2026-06-30
 
 ### 🔧 v0.10.1 — 字幕分割质量修复

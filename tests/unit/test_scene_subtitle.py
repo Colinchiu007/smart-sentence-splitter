@@ -188,3 +188,97 @@ class TestParagraphAwareIntegrity:
         assert "第一段内容" in all_scene_text
         assert "第二段内容" in all_scene_text
         assert "第三段结尾" in all_scene_text
+
+
+class TestQuoteAwareSplitting:
+    """v0.11.0 R1: 引号感知字幕预分割。"""
+
+    def _get_blocks(self, text: str) -> list:
+        seg = SubtitleSegmenter()
+        scene = make_scene(text)
+        subs = seg.segment(scene)
+        return [s.text for s in subs]
+
+    def test_quote_narrative_boundary(self):
+        """引号内容与叙述文字应分属不同块。"""
+        blocks = self._get_blocks('\u201c\u4e0d\u5bf9\uff0c\u201d\u5bb4\u4f1a\u6563\u540e\uff0c\u963f\u5e93\u5c3c\u4e9a\u5bf9\u526f\u5b98\u4f4e\u8bed')
+        # 第一块应只含引号内容（“不对，”）
+        assert "\u4e0d\u5bf9" in blocks[0]  # “不对”在第一块
+        # 叙述文字应在单独的块中
+        assert any("\u5bb4\u4f1a\u6563\u540e" in b for b in blocks[1:])  # “宴会散后”在后续块
+        # 引号内容和叙述不应在同一块
+        assert not any("\u4e0d\u5bf9" in b and "\u5bb4\u4f1a\u6563\u540e" in b for b in blocks)
+
+    def test_quote_exclamation_separate(self):
+        """引号+叹号后跟叙述，应分开。"""
+        blocks = self._get_blocks('\u201c\u5f02\u6559\u5f92\u201d\uff01\u4ed6\u4eec\u72de\u7b11\u7740\u3002')
+        # “异教徒” 应在第一块
+        assert "\u5f02\u6559\u5f92" in blocks[0]
+        # 叙述应在单独的块
+        assert any("\u4ed6\u4eec\u72de\u7b11\u7740" in b for b in blocks[1:])
+
+    def test_colon_before_quote(self):
+        """冒号+引号内容，应在冒号处分开。"""
+        blocks = self._get_blocks('\u4f5c\u966a\u7684\u83f2\u5f8b\u5bbe\u914b\u957f\u76f4\u63a5\u8d28\u95ee\uff1a\u201c\u5929\u671d\u51ed\u4ec0\u4e48\u6765\u6211\u4eec\u8fd9\u513f\u52d8\u6d4b\u5c71\u5ddd\u201d\uff1f')
+        # 应有两块以上
+        assert len(blocks) >= 2
+        # 冒号前的叙述和引号内容应分开
+        assert any("\u8d28\u95ee" in b for b in blocks)
+        assert any("\u5929\u671d" in b for b in blocks)
+
+    def test_no_quotes_no_split(self):
+        """无引号文本不受影响。"""
+        blocks = self._get_blocks('西班牙总督设宴款待，酒过三巡')
+        assert len(blocks) >= 1
+        assert all(len(b) <= 15 for b in blocks)
+
+
+class TestEnforceMaxLength:
+    """v0.11.0 R2: 超长块强制再分割。"""
+
+    def test_long_block_forced_split(self):
+        """超过 max_chars 的块应被强制分割。"""
+        seg = SubtitleSegmenter()
+        # 直接测试 _enforce_max_length
+        blocks = ["这是一段很长的文本超过了十五个字符的限制"]
+        result = seg._enforce_max_length(blocks)
+        assert all(len(b) <= 15 for b in result)
+
+    def test_short_block_unchanged(self):
+        """不超过 max_chars 的块不受影响。"""
+        seg = SubtitleSegmenter()
+        blocks = ["短文本", "另一个短文本"]
+        result = seg._enforce_max_length(blocks)
+        assert result == blocks
+
+    def test_long_sentence_split(self):
+        """26字长句应被分割。"""
+        seg = SubtitleSegmenter()
+        scene = make_scene('在马尼拉南郊的圣佩德罗·马卡蒂与西班牙正规军血战数日')
+        subs = seg.segment(scene)
+        assert all(len(s.text) <= 15 for s in subs)
+        assert len(subs) >= 2
+
+
+class TestSeparatorSceneFilter:
+    """v0.11.0 R3: 分隔线场景过滤。"""
+
+    def test_separator_not_scene(self):
+        """纯分隔线段落不应生成场景。"""
+        from splitter import SmartSentenceSplitter
+        text = '海面空旷得令人心慌。\n---\n1639年冬，起义像野火般蔓延。'
+        splitter = SmartSentenceSplitter({"enable_paragraph_aware": True})
+        result = splitter.split(text)
+        for scene in result.scenes:
+            assert scene.text.strip() != "---"
+            assert "---" not in scene.text
+
+    def test_various_separators_filtered(self):
+        """各种分隔线格式都应被过滤。"""
+        from splitter import SmartSentenceSplitter
+        text = '第一段。\n***\n第二段。\n===\n第三段。'
+        splitter = SmartSentenceSplitter({"enable_paragraph_aware": True})
+        result = splitter.split(text)
+        all_text = "".join(s.text for s in result.scenes)
+        assert "***" not in all_text
+        assert "===" not in all_text
