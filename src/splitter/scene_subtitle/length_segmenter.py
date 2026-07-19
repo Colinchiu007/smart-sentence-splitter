@@ -251,12 +251,7 @@ class LengthSegmenter:
             # v0.12.0: 跨句不合并 — 如果前一块末尾是句子终止标点\uff08。！？\uff09，
             # 不合并剩余文本到前一块，避免两句话显示在同一屏字幕上。
             _SENTENCE_END = frozenset("。！？")
-            if (
-                chunks
-                and len(remaining) < self.min_chars
-                and chunks[-1]
-                and chunks[-1][-1] not in _SENTENCE_END
-            ):
+            if chunks and len(remaining) < self.min_chars and chunks[-1] and chunks[-1][-1] not in _SENTENCE_END:
                 chunks[-1] += remaining
             else:
                 chunks.append(remaining)
