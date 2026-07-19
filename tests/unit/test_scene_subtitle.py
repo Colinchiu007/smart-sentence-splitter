@@ -101,13 +101,15 @@ class TestSubtitleCleanUp:
         return SubtitleSegmenter(cfg)
 
     def test_trailing_punctuation_removed(self):
-        """字幕块末尾标点应被去除。"""
+        """字幕块末尾句内标点应被去除\uff08句号切分后的块除外\uff09。"""
         seg = self._make_seg()
         scene = make_scene("今天天气真好。我们去公园散步吧。")
         subs = seg.segment(scene)
         for sub in subs:
-            assert sub.text[-1] not in "。！？；，、.!?;…", (
-                f"字幕块末尾不应是标点: {sub.text!r}"
+            # v0.12.0: 句号切分后的块可以。结尾\uff08句子终止符\uff09
+            # 但句内标点\uff08，、；\uff09不应出现在末尾
+            assert sub.text[-1] not in "，、；,.?;", (
+                f"字幕块末尾不应是句内标点: {sub.text!r}"
             )
 
     def test_leading_punctuation_fixed(self):

@@ -248,7 +248,15 @@ class LengthSegmenter:
 
         if remaining:
             # 短尾合并：剩余 < min_chars 时合并到上一块，避免孤立断词
-            if chunks and len(remaining) < self.min_chars:
+            # v0.12.0: 跨句不合并 — 如果前一块末尾是句子终止标点\uff08。！？\uff09，
+            # 不合并剩余文本到前一块，避免两句话显示在同一屏字幕上。
+            _SENTENCE_END = frozenset("。！？")
+            if (
+                chunks
+                and len(remaining) < self.min_chars
+                and chunks[-1]
+                and chunks[-1][-1] not in _SENTENCE_END
+            ):
                 chunks[-1] += remaining
             else:
                 chunks.append(remaining)
