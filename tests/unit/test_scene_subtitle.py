@@ -22,34 +22,40 @@ def make_scene(text: str, segment_id: int = 0, duration: float = 6.0) -> SceneSe
 
 class TestSceneSegmenter:
     def test_calculate_target_words(self):
-        seg = SceneSegmenter({
-            "target_seconds": 6.0,
-            "base_words_per_second": 3.3,
-            "speech_rate": 1.0,
-            "min_words_per_segment": 10,
-            "max_words_per_segment": 50,
-        })
+        seg = SceneSegmenter(
+            {
+                "target_seconds": 6.0,
+                "base_words_per_second": 3.3,
+                "speech_rate": 1.0,
+                "min_words_per_segment": 10,
+                "max_words_per_segment": 50,
+            }
+        )
         target = seg.calculate_target_words()
         assert 10 <= target <= 50
 
     def test_segment_combines_sentences(self):
-        seg = SceneSegmenter({
-            "target_seconds": 6.0,
-            "base_words_per_segment": 3.3,
-            "min_words_per_segment": 10,
-            "max_words_per_segment": 50,
-        })
+        seg = SceneSegmenter(
+            {
+                "target_seconds": 6.0,
+                "base_words_per_segment": 3.3,
+                "min_words_per_segment": 10,
+                "max_words_per_segment": 50,
+            }
+        )
         sentences = [make_sentence(f"句子{i}。" * 2, i) for i in range(5)]
         scenes = seg.segment(sentences)
         assert len(scenes) >= 1
         assert all(scene.segment_id >= 0 for scene in scenes)
 
     def test_segment_no_split_inside_sentence(self):
-        seg = SceneSegmenter({
-            "target_seconds": 6.0,
-            "min_words_per_segment": 10,
-            "max_words_per_segment": 50,
-        })
+        seg = SceneSegmenter(
+            {
+                "target_seconds": 6.0,
+                "min_words_per_segment": 10,
+                "max_words_per_segment": 50,
+            }
+        )
         sentences = [make_sentence("一个完整的句子，不能被切开。", 0)]
         scenes = seg.segment(sentences)
         assert len(scenes) == 1
@@ -62,10 +68,12 @@ class TestSceneSegmenter:
 
 class TestSubtitleSegmenter:
     def test_basic_split(self):
-        seg = SubtitleSegmenter({
-            "min_chars_per_block": 5,
-            "max_chars_per_block": 10,
-        })
+        seg = SubtitleSegmenter(
+            {
+                "min_chars_per_block": 5,
+                "max_chars_per_block": 10,
+            }
+        )
         scene = make_scene("今天天气真好我们去公园散步看花赏花。")
         subtitles = seg.segment(scene)
         assert len(subtitles) >= 1
@@ -80,8 +88,12 @@ class TestSubtitleSegmenter:
 
     def test_proportional_vs_equal(self):
         # proportional
-        seg_p = SubtitleSegmenter({"min_chars_per_block": 5, "max_chars_per_block": 10, "time_calculation_method": "proportional"})
-        seg_e = SubtitleSegmenter({"min_chars_per_block": 5, "max_chars_per_block": 10, "time_calculation_method": "equal"})
+        seg_p = SubtitleSegmenter(
+            {"min_chars_per_block": 5, "max_chars_per_block": 10, "time_calculation_method": "proportional"}
+        )
+        seg_e = SubtitleSegmenter(
+            {"min_chars_per_block": 5, "max_chars_per_block": 10, "time_calculation_method": "equal"}
+        )
         scene = make_scene("今天天气真好我们去公园散步看花。")
         sub_p = seg_p.segment(scene)
         sub_e = seg_e.segment(scene)
@@ -101,14 +113,14 @@ class TestSubtitleCleanUp:
         return SubtitleSegmenter(cfg)
 
     def test_trailing_punctuation_removed(self):
-        """字幕块末尾标点应被去除。"""
+        """字幕块末尾句内标点应被去除\uff08句号切分后的块除外\uff09。"""
         seg = self._make_seg()
         scene = make_scene("今天天气真好。我们去公园散步吧。")
         subs = seg.segment(scene)
         for sub in subs:
-            assert sub.text[-1] not in "。！？；，、.!?;…", (
-                f"字幕块末尾不应是标点: {sub.text!r}"
-            )
+            # v0.12.0: 句号切分后的块可以。结尾\uff08句子终止符\uff09
+            # 但句内标点\uff08，、；\uff09不应出现在末尾
+            assert sub.text[-1] not in "，、；,.?;", f"字幕块末尾不应是句内标点: {sub.text!r}"
 
     def test_leading_punctuation_fixed(self):
         """字幕块不应以句内标点开头。"""
@@ -117,34 +129,32 @@ class TestSubtitleCleanUp:
         scene = make_scene("西班牙士兵邦板牙土著战士以及五百名佩着野太刀的日本浪人悄无声息地完成了合围。")
         subs = seg.segment(scene)
         for sub in subs:
-            assert sub.text[0] not in "，、。！？；", (
-                f"字幕块不应以标点开头: {sub.text!r}"
-            )
+            assert sub.text[0] not in "，、。！？；", f"字幕块不应以标点开头: {sub.text!r}"
 
     def test_cross_block_quotes_removed(self):
         """跨块双引号应被去除。"""
         seg = self._make_seg()
         # 构造包含引号的场景，迫使引号跨块
-        scene = make_scene('站在高处安抚惶惑的同胞：“把铁器卖了吧换笔钱图个平安。”')
+        scene = make_scene("站在高处安抚惶惑的同胞：“把铁器卖了吧换笔钱图个平安。”")
         subs = seg.segment(scene)
         # 检查不应有孤立引号跨块的情况
         for i in range(len(subs) - 1):
-            curr_end = subs[i].text[-1] if subs[i].text else ''
-            next_start = subs[i + 1].text[0] if subs[i + 1].text else ''
+            curr_end = subs[i].text[-1] if subs[i].text else ""
+            next_start = subs[i + 1].text[0] if subs[i + 1].text else ""
             # 不应出现 左引号在块尾 + 右引号在下一块开头
-            assert not (
-                curr_end in '\u201c\u300c"' and next_start in '\u201d\u300d"'
-            ), f"跨块引号未清理: block[{i}]={subs[i].text!r}, block[{i+1}]={subs[i+1].text!r}"
+            assert not (curr_end in '\u201c\u300c"' and next_start in '\u201d\u300d"'), (
+                f"跨块引号未清理: block[{i}]={subs[i].text!r}, block[{i + 1}]={subs[i + 1].text!r}"
+            )
 
     def test_merge_short_with_quotes(self):
         """纯引号短块应被合并（场景 10 问题）。"""
         seg = self._make_seg()
         # 模拟 _merge_short 输入：一个纯引号块
-        blocks = ['他们开始行动。一开始装得彬彬有礼', '"']
+        blocks = ["他们开始行动。一开始装得彬彬有礼", '"']
         merged = seg._merge_short(blocks)
         # 纯引号块应被合并到前一块
         assert len(merged) == 1
-        assert '"' in merged[0] or '\u201c' in merged[0] or merged[0].endswith('礼')
+        assert '"' in merged[0] or "\u201c" in merged[0] or merged[0].endswith("礼")
 
 
 class TestLengthSegmenterExtended:
@@ -153,6 +163,7 @@ class TestLengthSegmenterExtended:
     def test_extended_search_avoids_hard_cut(self):
         """找不到标点时应扩大搜索，避免硬切在词中间。"""
         from splitter.scene_subtitle.length_segmenter import LengthSegmenter
+
         seg = LengthSegmenter(strategy="A", min_chars=8, max_chars=15)
         # 文本超过 15 字但 15 字内无标点，15 字外有标点
         text = "马尼克德拉腊接到一封盖着招讨大将军印信的书信时手在微微发抖"
@@ -164,6 +175,7 @@ class TestLengthSegmenterExtended:
     def test_no_leading_punctuation_in_chunks(self):
         """切分后不应有以标点开头的块。"""
         from splitter.scene_subtitle.length_segmenter import LengthSegmenter
+
         seg = LengthSegmenter(strategy="A", min_chars=8, max_chars=15)
         text = "西班牙士兵邦板牙土著战士以及五百名佩着野太刀的日本浪人悄无声息地完成了合围。"
         chunks = seg.split_text(text)
@@ -177,6 +189,7 @@ class TestParagraphAwareIntegrity:
     def test_no_text_corruption(self):
         """段落感知模式下，所有场景文本应覆盖原文全部内容，无重复无丢失。"""
         from splitter import SmartSentenceSplitter
+
         text = """第一段内容。这里有一些文字。
 第二段内容。这是不同的段落。
 第三段结尾。这是最后的内容。"""
@@ -201,7 +214,9 @@ class TestQuoteAwareSplitting:
 
     def test_quote_narrative_boundary(self):
         """引号内容与叙述文字应分属不同块。"""
-        blocks = self._get_blocks('\u201c\u4e0d\u5bf9\uff0c\u201d\u5bb4\u4f1a\u6563\u540e\uff0c\u963f\u5e93\u5c3c\u4e9a\u5bf9\u526f\u5b98\u4f4e\u8bed')
+        blocks = self._get_blocks(
+            "\u201c\u4e0d\u5bf9\uff0c\u201d\u5bb4\u4f1a\u6563\u540e\uff0c\u963f\u5e93\u5c3c\u4e9a\u5bf9\u526f\u5b98\u4f4e\u8bed"
+        )
         # 第一块应只含引号内容（“不对，”）
         assert "\u4e0d\u5bf9" in blocks[0]  # “不对”在第一块
         # 叙述文字应在单独的块中
@@ -211,7 +226,7 @@ class TestQuoteAwareSplitting:
 
     def test_quote_exclamation_separate(self):
         """引号+叹号后跟叙述，应分开。"""
-        blocks = self._get_blocks('\u201c\u5f02\u6559\u5f92\u201d\uff01\u4ed6\u4eec\u72de\u7b11\u7740\u3002')
+        blocks = self._get_blocks("\u201c\u5f02\u6559\u5f92\u201d\uff01\u4ed6\u4eec\u72de\u7b11\u7740\u3002")
         # “异教徒” 应在第一块
         assert "\u5f02\u6559\u5f92" in blocks[0]
         # 叙述应在单独的块
@@ -219,7 +234,9 @@ class TestQuoteAwareSplitting:
 
     def test_colon_before_quote(self):
         """冒号+引号内容，应在冒号处分开。"""
-        blocks = self._get_blocks('\u4f5c\u966a\u7684\u83f2\u5f8b\u5bbe\u914b\u957f\u76f4\u63a5\u8d28\u95ee\uff1a\u201c\u5929\u671d\u51ed\u4ec0\u4e48\u6765\u6211\u4eec\u8fd9\u513f\u52d8\u6d4b\u5c71\u5ddd\u201d\uff1f')
+        blocks = self._get_blocks(
+            "\u4f5c\u966a\u7684\u83f2\u5f8b\u5bbe\u914b\u957f\u76f4\u63a5\u8d28\u95ee\uff1a\u201c\u5929\u671d\u51ed\u4ec0\u4e48\u6765\u6211\u4eec\u8fd9\u513f\u52d8\u6d4b\u5c71\u5ddd\u201d\uff1f"
+        )
         # 应有两块以上
         assert len(blocks) >= 2
         # 冒号前的叙述和引号内容应分开
@@ -228,7 +245,7 @@ class TestQuoteAwareSplitting:
 
     def test_no_quotes_no_split(self):
         """无引号文本不受影响。"""
-        blocks = self._get_blocks('西班牙总督设宴款待，酒过三巡')
+        blocks = self._get_blocks("西班牙总督设宴款待，酒过三巡")
         assert len(blocks) >= 1
         assert all(len(b) <= 15 for b in blocks)
 
@@ -254,7 +271,7 @@ class TestEnforceMaxLength:
     def test_long_sentence_split(self):
         """26字长句应被分割。"""
         seg = SubtitleSegmenter()
-        scene = make_scene('在马尼拉南郊的圣佩德罗·马卡蒂与西班牙正规军血战数日')
+        scene = make_scene("在马尼拉南郊的圣佩德罗·马卡蒂与西班牙正规军血战数日")
         subs = seg.segment(scene)
         assert all(len(s.text) <= 15 for s in subs)
         assert len(subs) >= 2
@@ -266,7 +283,8 @@ class TestSeparatorSceneFilter:
     def test_separator_not_scene(self):
         """纯分隔线段落不应生成场景。"""
         from splitter import SmartSentenceSplitter
-        text = '海面空旷得令人心慌。\n---\n1639年冬，起义像野火般蔓延。'
+
+        text = "海面空旷得令人心慌。\n---\n1639年冬，起义像野火般蔓延。"
         splitter = SmartSentenceSplitter({"enable_paragraph_aware": True})
         result = splitter.split(text)
         for scene in result.scenes:
@@ -276,7 +294,8 @@ class TestSeparatorSceneFilter:
     def test_various_separators_filtered(self):
         """各种分隔线格式都应被过滤。"""
         from splitter import SmartSentenceSplitter
-        text = '第一段。\n***\n第二段。\n===\n第三段。'
+
+        text = "第一段。\n***\n第二段。\n===\n第三段。"
         splitter = SmartSentenceSplitter({"enable_paragraph_aware": True})
         result = splitter.split(text)
         all_text = "".join(s.text for s in result.scenes)

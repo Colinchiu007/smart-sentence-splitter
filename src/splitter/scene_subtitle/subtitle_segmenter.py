@@ -79,6 +79,9 @@ class SubtitleSegmenter:
         # v0.10.1: 字幕后处理 — 开头标点修正、末尾标点去除、跨块引号清理
         blocks = self._clean_subtitle_blocks(blocks)
 
+        # v0.12.0: 块内句号切分 — 在句号处切分多句话的块
+        blocks = self._split_at_sentence_boundaries(blocks)
+
         # v0.11.0: 超长块强制再分割 — 清理/合并后仍超 max_chars 的块强制再切
         blocks = self._enforce_max_length(blocks)
 
@@ -325,6 +328,42 @@ class SubtitleSegmenter:
             sub_blocks = self._force_split(block, self.max_chars, SPLIT_PUNCT)
             result.extend(sub_blocks)
 
+        return result
+
+    # v0.12.0: 块内句号切分 — 避免两句话显示在同一屏
+    _SENTENCE_TERMINATORS = frozenset("。！？")
+
+    def _split_at_sentence_boundaries(self, blocks: List[str]) -> List[str]:
+        """v0.12.0: 在块内的句子终止标点处切分，避免两句话显示在同一屏。
+
+        当一个块包含多个句子\uff08如 "李慈的忠心。至于满朝文官"\uff09，
+        在句号处切分为两个独立的字幕块，不论块长度。
+        """
+        result = []
+        for block in blocks:
+            # 检查块内是否有句子终止标点在中间位置\uff08非首非尾\uff09
+            has_mid_sentence = False
+            for i, ch in enumerate(block):
+                if ch in self._SENTENCE_TERMINATORS and i > 0 and i < len(block) - 1:
+                    has_mid_sentence = True
+                    break
+
+            if not has_mid_sentence:
+                result.append(block)
+                continue
+
+            # 找块内的句子终止标点，在此处切分
+            # v0.12.0: 不限制 min_chars — 句号处必须切分，即使前句较短
+            parts = []
+            current = ""
+            for ch in block:
+                current += ch
+                if ch in self._SENTENCE_TERMINATORS:
+                    parts.append(current)
+                    current = ""
+            if current:
+                parts.append(current)
+            result.extend(parts)
         return result
 
     @staticmethod
