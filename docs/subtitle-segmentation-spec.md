@@ -76,10 +76,12 @@
 4. **再次去除**：删除引号后暴露的新开头/末尾标点，重复子步 1 与 3 一次；
 - 过滤空块（清理后为空的块删除）。
 
-### Step 6 — 超长强制分割
+### Step 6 — 超长强制分割（平衡切分）
 - 遍历 Step 5 结果，`len(block) > max_chars` 的块：
   1. 优先在优先级标点处再切（从后往前找最近标点；**切分点必须在块内部**，块尾标点不作为锚点）；
-  2. 无标点/锚点无效则在 max_chars 处硬切；
+  2. **平衡约束**：若按当前切分方案切出的**尾块长度 < min_chars**，则将切分点前移至 `len(block) - min_chars`（保证尾块 ≥ min_chars）——优先在 `[len(block)-min_chars, len(block))` 区间内从后往前找最近标点，找不到则在该位置字面平衡切；
+  3. 无标点/锚点无效（含平衡区间外）则在 `len(block) - min_chars` 处平衡切；
+- 目的：避免强制切分产生 `< min_chars` 的孤悬尾块（如 `…慢慢炖煮` 被切成 `…慢慢炖` + `煮`，`煮` 单字块不合理）；平衡后如 `再配上八角桂皮黄酒`（9）+ `等香料慢慢炖煮`（8）。
 - Step 6 之后**再执行一次 Step 5 清理**：强制切分可能产生新的孤立引号（切断了引号对）或块尾标点，需二次规范化；
 - 注意：Step 4 合并可能产生超长块，此步兜底；块上限 max_chars × 2 内不再二次强制。
 
@@ -87,7 +89,7 @@
 - 父场景时长 `parent_duration`（秒，来自场景层）。
 - `proportional`（默认）：`duration_i = len(text_i) / Σlen(text) × parent_duration`；
 - `equal`：`duration_i = parent_duration / n`；
-- `start_time_0 = 0`；`start_time_i = start_time_{i-1} + duration_{i-1}`；结果保留 2 位小数。
+- **连续性约束**：`start_time_0 = 0`；`start_time_i = start_time_{i-1} + duration_{i-1}`（使用**舍入后的 duration** 累加，保证区间严格连续、互不重叠，不因浮点舍入产生 0.01s 间隙/重叠）；duration 保留 2 位小数。
 
 ## 3. 数据校验（实现必须满足的断言）
 - [ ] 输入 text 去首尾空白后非空，否则返回空列表；

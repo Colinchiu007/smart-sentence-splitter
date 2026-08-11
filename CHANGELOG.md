@@ -1,3 +1,14 @@
+## [0.14.1] - 2026-08-12
+
+### 🐛 fix(subtitle): 字幕分块平衡切分 + 时间戳连续性
+
+- **平衡切分（Step 6）**：超长块强制切分时，若尾块长度 < min_chars，切分点前移至 `len - min_chars`
+  （区间内优先找标点），避免产生孤悬尾块——修复 `…慢慢炖煮` 被切成 `…慢慢炖` + `煮`（1 字块）的问题，
+  现输出 `再配上八角桂皮黄`（9）+ `酒等香料慢慢炖煮`（8）
+- **时间戳连续性（Step 7）**：start_time 改用舍入后 duration 连续累加，消除浮点舍入导致的
+  0.01s 区间间隙/重叠（对齐 Multi-Publish PRD "字幕区间连续、互不重叠"）
+- 规范同步：docs/subtitle-segmentation-spec.md Step 6/Step 7 更新
+- 测试向量 +2：balanced_split_long（单句平衡切）、balanced_user_case（用户实例全文）→ 18 例 / 36 断言
 ## [0.14.0] - 2026-08-11
 
 ### ✨ feat(subtitle): 字幕分割规则统一（规范 v1.0，方案 C）
