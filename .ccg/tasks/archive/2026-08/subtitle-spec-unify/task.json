@@ -1,12 +1,16 @@
 {
   "id": "subtitle-spec-unify",
   "title": "字幕分割规则统一（共享规范 + 双实现对齐，方案 C）",
-  "status": "in_progress",
+  "status": "completed",
   "complexity": "L",
   "risk": "medium-high",
   "domain": "algorithm+spec",
-  "currentPhase": "analysis",
-  "nextAction": "设计字幕分割规范 v1 + 共享测试向量",
+  "currentPhase": "completed",
+  "nextAction": "已归档",
   "createdAt": "2026-08-11T17:30:00Z",
-  "branch": "codex/subtitle-spec-unify"
+  "branch": "codex/subtitle-spec-unify",
+  "merged": {
+    "splitter_pr": 11,
+    "multipublish_pr": 539
+  }
 }
