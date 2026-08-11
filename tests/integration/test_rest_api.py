@@ -66,6 +66,25 @@ class TestSplitBasic:
         assert data["language"] == "en"
         assert len(data["sentences"]) >= 2
 
+    def test_split_returns_subtitle_layer(self, client):
+        """场景层必须包含字幕层（subtitles[]），而不只是 subtitle_count。"""
+        r = client.post("/v1/split", json={
+            "text": "今天天气真好，阳光洒在公园的长椅上。我们沿着小路散步，遇到了老朋友。",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["scenes"], "应有场景层"
+        for scene in data["scenes"]:
+            assert "subtitle_count" in scene
+            assert "subtitles" in scene, "场景必须返回 subtitles 字段"
+            assert isinstance(scene["subtitles"], list)
+            if scene["subtitle_count"] > 0:
+                assert len(scene["subtitles"]) == scene["subtitle_count"]
+                sub = scene["subtitles"][0]
+                # 字幕块字段契约
+                for key in ("text", "display_order", "start_time", "duration", "parent_segment_id"):
+                    assert key in sub, f"字幕块缺少字段 {key}"
+
     def test_split_with_mode(self, client):
         r = client.post("/v1/split", json={
             "text": "今天天气真好。我们去公园。",
