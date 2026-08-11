@@ -124,6 +124,36 @@
 | R3: 分隔线场景过滤 | 纯分隔线段落（`---`、`***`、`===`）不生成场景 |
 | R4: 管线级长句保障 | 诊断日志监控超长块，确保管线中每个字幕块都经过长度检查 |
 
+### v0.13 — REST 字幕层透传（/v1/split 契约对齐）
+
+**背景**：核心层 `Scene.to_dict()` 一直包含 `subtitles[]`，README/PRD 示例也展示了
+`scenes[].subtitles[]`；但 v0.5.0 引入 REST API 时 `SceneResponse` 只定义了
+`subtitle_count`（数量），字幕内容未进入响应契约，导致下游（如 PROJECT-011
+prompt-engine「对比验证」页）无法展示字幕层。v0.13（PR #9）补齐透传。
+
+**REST 响应契约（权威定义）**：
+
+```
+POST /v1/split → scenes[].subtitles[]
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `text` | string | 字幕文本（一屏字幕） |
+| `display_order` | int | 场景内显示顺序（从 0 开始） |
+| `start_time` | float | 开始时间（秒，相对所属场景） |
+| `duration` | float | 显示时长（秒） |
+| `parent_segment_id` | int | 所属语音段落 segment_id |
+
+约束：
+- `subtitle_count == len(subtitles)`（数量与内容一致，契约测试断言）；
+- 三个分句端点（`/v1/split`、`/v1/split/batch`、`/v1/split/stream`）均透传字幕层；
+- 字幕块时间由语速估算得出，属"参考时间轴"；需精确对齐视频节奏的消费方应基于
+  `text` 自行重新计算（与 Multi-Publish 本地 TypeScript 字幕分割双源并存）。
+
+**版本注记**：v0.5.0–v0.12.x 的 `SceneResponse` 仅含 `subtitle_count`（实现缺口，
+非设计意图）；v0.13 起全量透传 `subtitles[]`。
+
 ### 未来规划 (v1.0+)
 
 | 功能 | 优先级 | 状态 |

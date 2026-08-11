@@ -1,3 +1,12 @@
+## [0.12.1] - 2026-08-11
+
+### ✨ feat(api): /v1/split 场景层透传字幕层（subtitles[]）
+
+- `SceneResponse` 新增 `subtitles: List[SubtitleResponse]`（text/display_order/start_time/duration/parent_segment_id）
+- `_to_response` 透传 `sc.subtitles`（此前仅返回 `subtitle_count`，字幕内容被丢弃）
+- 三个分句端点（split / split/batch / split/stream）均透传
+- 集成测试：场景层 subtitles 数量与内容断言（字段契约）
+- 目的：对齐 README/PRD 既有的 `scenes[].subtitles[]` 契约，供下游（prompt-engine 对比验证页）展示字幕层
 ## [0.12.0] - 2026-07-19
 
 ### 🔧 v0.12.0 — 字幕跨句合并修复
