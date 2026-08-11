@@ -54,6 +54,16 @@ class SentenceResponse(BaseModel):
     topic_depth_score: float = 0.0
 
 
+class SubtitleResponse(BaseModel):
+    """场景内字幕块（屏幕上一行字幕）。"""
+
+    text: str
+    display_order: int
+    start_time: float
+    duration: float
+    parent_segment_id: int
+
+
 class SceneResponse(BaseModel):
     """分句结果中的单个场景。"""
 
@@ -64,6 +74,7 @@ class SceneResponse(BaseModel):
     era: Optional[str] = None
     era_confidence: Optional[float] = None
     subtitle_count: int = 0
+    subtitles: List[SubtitleResponse] = Field(default_factory=list)
 
 
 class SplitResponse(BaseModel):
@@ -444,6 +455,16 @@ def _to_response(result: SplitResult, req: SplitRequest) -> SplitResponse:
                 era=era,
                 era_confidence=era_conf,
                 subtitle_count=len(sc.subtitles),
+                subtitles=[
+                    SubtitleResponse(
+                        text=sub.text,
+                        display_order=sub.display_order,
+                        start_time=sub.start_time,
+                        duration=sub.duration,
+                        parent_segment_id=sub.parent_segment_id,
+                    )
+                    for sub in sc.subtitles
+                ],
             )
         )
 
