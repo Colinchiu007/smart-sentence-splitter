@@ -263,10 +263,12 @@ class SubtitleSegmenter:
         return "".join(ch for i, ch in enumerate(text) if not drop[i])
 
     def _enforce_max(self, blocks: List[str]) -> List[str]:
-        """Step 6：清理后仍 > max_chars 的块强制切分（标点优先，无标点硬切）。
+        """Step 6：清理后仍 > max_chars 的块强制切分（标点优先，平衡切分）。
 
-        注意：切分点必须在块内部（pos < len），块尾标点不作为切分锚点
-        （块尾标点由 Step 5 去除，且依赖它切分会产生无效零长度切分）。
+        - 切分点必须在块内部（pos < len），块尾标点不作为切分锚点；
+        - 平衡约束：若尾块长度 < min_chars，切分点前移至 len(b) - min_chars
+          （优先在 [len(b)-min_chars, len(b)) 区间内找最近标点），避免产生孤悬尾块
+          （如 17 字块切 15+2 会让 2 字尾块成单块，应平衡切 9+8）。
         """
         out: List[str] = []
         for b in blocks:
@@ -274,11 +276,27 @@ class SubtitleSegmenter:
                 pos = self._find_split_pos(b)
                 if pos <= 0 or pos >= len(b):
                     pos = self.max_chars
+                # 平衡约束：尾块 < min_chars 时前移切分点
+                if len(b) - pos < self.min_chars:
+                    min_pos = max(1, len(b) - self.min_chars)
+                    balanced = self._find_split_pos_in_range(b, min_pos, len(b) - 1)
+                    pos = balanced if balanced > 0 else min_pos
                 out.append(b[:pos])
                 b = b[pos:]
             if b:
                 out.append(b)
         return out
+
+    @staticmethod
+    def _find_split_pos_in_range(text: str, lo: int, hi: int) -> int:
+        """在 [lo, hi] 范围内从后往前找最近优先级标点/空格（返回切后索引；无则 -1）。"""
+        for i in range(hi, lo - 1, -1):
+            if text[i] in PRIORITY_PUNCT:
+                return i + 1
+        for i in range(hi, lo - 1, -1):
+            if text[i] in (" ", "\n", "\u3000"):
+                return i + 1
+        return -1
 
     # ── Step 7 时间戳 ───────────────────────────────────
     def _assign_timestamps(self, blocks: List[str], parent_duration: float, parent_id: int) -> List[SubtitleBlock]:
@@ -294,14 +312,15 @@ class SubtitleSegmenter:
         t = 0.0
         for i, b in enumerate(blocks):
             d = round(durs[i], 2)
+            # 用舍入后的 duration 累加，保证区间严格连续（start_{i+1} = start_i + dur_i）
             subs.append(
                 SubtitleBlock(
                     text=b,
                     display_order=i,
-                    start_time=round(t, 2),
+                    start_time=t,
                     duration=d,
                     parent_segment_id=parent_id,
                 )
             )
-            t += durs[i]
+            t = round(t + d, 2)
         return subs
