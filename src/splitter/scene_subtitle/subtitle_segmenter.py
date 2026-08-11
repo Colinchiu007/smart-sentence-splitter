@@ -1,106 +1,200 @@
-"""Subtitle segmenter (Layer 3).
+"""Subtitle segmenter (Layer 3) — 对齐《字幕分割规范 v1.0》。
 
-将 SceneSegment 内的文本切分为 8-15 字的字幕块。
+见 docs/subtitle-segmentation-spec.md（双实现共享：smart-sentence-splitter Python
+与 Multi-Publish story2video-engine TypeScript 输出同一字幕块序列）。
 
-v0.9.2 改动: 复用 LengthSegmenter 配对引号保护 — 不再自己实现切分。
-v0.10.1 改动: 字幕后处理 — 末尾标点去除、跨块引号清理、开头标点修正。
-v0.11.0 改动: 引号感知预分割 + 超长块强制再分割 + 诊断日志。
+规范 7 步流水线（顺序固定）：
+  Step 1 分句边界保留（句子优先，块不跨句）
+  Step 2 引号感知预分割（说话内容/叙述分离）
+  Step 3 长度切分（标点优先 + 配对引号保护，min/max）
+  Step 4 短块合并（前块 <min / 纯标点短块 / 短尾）
+  Step 5 标点规范化（trim → 开头修正 → 末尾去除 → 跨块引号清理 → 再去除）
+  Step 6 超长强制分割
+  Step 7 时间戳分配（proportional / equal）
+
+配置（兼容旧键）：min_chars_per_block / max_chars_per_block / time_calculation_method。
 """
 
 from __future__ import annotations
 from typing import List
-import logging
 
 from ..models import SubtitleBlock, SceneSegment
 
-logger = logging.getLogger(__name__)
+# ── 规范常量 ─────────────────────────────────────────────
+DEFAULT_MIN_CHARS = 8
+DEFAULT_MAX_CHARS = 15
 
-# 句末/句内标点（用于末尾去除和开头检测）
-_TRAILING_PUNCT = frozenset("。！？；，、.!?;…\n")
-# 纯标点判定集合（含引号，用于 _merge_short）
-_PUNCT_CHARS = frozenset("。！？；，、.!?;…\n\"'\"\"''「」『』《》（）()[]【】{}§")
-# 跨块引号对
-_CROSS_BLOCK_QUOTES = [
+# Step 1 句界字符（归属前块）
+SENTENCE_BOUNDARY = set("。！？…!?.")
+
+# Step 3 优先级标点（空格/换行单独判定）
+PRIORITY_PUNCT = set("。！？；.!?;，,、")
+
+# Step 5 开头修正标点
+LEADING_PUNCT = set("，、。！？；,!?;.")
+
+# Step 5 末尾去除标点
+TRAILING_PUNCT = set("。！？；，、.!?;…")
+
+# Step 2 / Step 5 配对引号
+QUOTE_PAIRS = [
     ("\u201c", "\u201d"),  # " "
+    ("\u2018", "\u2019"),  # ' '
     ("\u300c", "\u300d"),  # 「 」
+    ("\u300e", "\u300f"),  # 『 』
+    ("\u300a", "\u300b"),  # 《 》
+    ("\uff08", "\uff09"),  # （ ）
+    ("\u3010", "\u3011"),  # 【 】
+    ("[", "]"),
     ('"', '"'),
     ("'", "'"),
 ]
+LEFT_QUOTES = {p[0] for p in QUOTE_PAIRS}
+RIGHT_QUOTES = {p[1] for p in QUOTE_PAIRS}
+QUOTE_MAP = dict(QUOTE_PAIRS)
 
 
 class SubtitleSegmenter:
-    """字幕级分割器。"""
+    """字幕级分割器 — 按《字幕分割规范 v1.0》实现。"""
 
     def __init__(self, config: dict = None):
-        self.config = config or {}
-        self.min_chars = self.config.get("min_chars_per_block", 8)
-        self.max_chars = self.config.get("max_chars_per_block", 15)
-        self.time_method = self.config.get("time_calculation_method", "proportional")
-        # v0.9.2: 复用 LengthSegmenter A 模式 (配对引号保护)
-        from .length_segmenter import LengthSegmenter
-
-        self._length_seg = LengthSegmenter(
-            strategy="A",
-            min_chars=self.min_chars,
-            max_chars=self.max_chars,
-        )
+        config = config or {}
+        self.min_chars = int(config.get("min_chars_per_block", DEFAULT_MIN_CHARS))
+        self.max_chars = int(config.get("max_chars_per_block", DEFAULT_MAX_CHARS))
+        # 规范 3：配置合法性，非法回退默认
+        if not (1 <= self.min_chars <= self.max_chars):
+            self.min_chars, self.max_chars = DEFAULT_MIN_CHARS, DEFAULT_MAX_CHARS
+        if self.max_chars > 64:
+            self.max_chars = 64
+        if self.min_chars > self.max_chars:
+            self.min_chars = self.max_chars
+        self.time_method = config.get("time_calculation_method", "proportional")
 
     def segment(self, scene: SceneSegment) -> List[SubtitleBlock]:
-        """为单个 SceneSegment 生成字幕块列表。"""
-        text = scene.text
-        parent_id = scene.segment_id
-        parent_duration = scene.estimated_duration
-
-        if not text or not text.strip():
+        """为单个 SceneSegment 生成字幕块（规范流水线）。"""
+        text = (scene.text or "").strip()
+        if not text:
             return []
+        blocks = self._split_to_blocks(text)
+        return self._assign_timestamps(blocks, scene.estimated_duration, scene.segment_id)
 
-        # v0.11.0: 引号感知预分割 — 在引号边界处切分，避免说话内容与叙述粘连
-        fragments = self._split_at_quote_boundaries(text)
-        has_quotes = len(fragments) > 1
+    # ── 主流程（Step 1-6）───────────────────────────────
+    def _split_to_blocks(self, text: str) -> List[str]:
+        """Step 1-6：分句 → 引号 → 长度 → 合并 → 标点 → 强制。"""
+        all_blocks: List[str] = []
+        for sentence in self._split_sentences(text):  # Step 1
+            for fragment in self._split_quote_boundaries(sentence):  # Step 2
+                blocks = self._length_split(fragment)  # Step 3
+                blocks = self._merge_short(blocks)  # Step 4
+                blocks = self._clean(blocks)  # Step 5
+                blocks = self._enforce_max(blocks)  # Step 6
+                blocks = self._clean(blocks)  # Step 6 后清理：强制切分可能产生新孤立引号/标点
+                all_blocks.extend(blocks)
+        # 规范 3：过滤空块与纯标点块（含孤立引号）
+        return [
+            b
+            for b in all_blocks
+            if b.strip() and not all(c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b)
+        ]
 
-        # 对每个片段独立做字数切分
+    def _split_sentences(self, text: str) -> List[str]:
+        """Step 1：按句界切分（句界字符归属前块）；未闭合引号内的句界不生效（保护引号配对）。"""
+        sentences: List[str] = []
+        cur = ""
+        stack: List[str] = []
+        for ch in text:
+            cur += ch
+            if ch in LEFT_QUOTES:
+                stack.append(ch)
+            elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
+                stack.pop()
+            if ch in SENTENCE_BOUNDARY and not stack:
+                sentences.append(cur)
+                cur = ""
+        if cur:
+            sentences.append(cur)
+        return [s for s in sentences if s.strip()]
+
+    def _split_quote_boundaries(self, text: str) -> List[str]:
+        """Step 2：闭引号后切分，且引号内容 ≥ min_chars 才切；短引号内容并入上下文。
+
+        规则（规范 v1.0）：
+        - 维护引号栈；外层配对闭合时，若引号内内容长度 ≥ min_chars，则在闭引号后切分；
+        - 引号内容 < min_chars 不切分（避免产生孤立引号/说话人引导短块）；
+        - 未闭合引号（句尾裸开引号）不切分，交由后续步骤处理。
+        """
+        fragments: List[str] = []
+        cur = ""
+        stack: List[tuple] = []  # (quote_char, content_start_index_in_cur)
+        for ch in text:
+            if ch in LEFT_QUOTES:
+                stack.append((ch, len(cur)))
+                cur += ch
+            elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1][0]) == ch:
+                _, start = stack.pop()
+                content_len = len(cur) - start - 1  # 引号内内容长度（不含开引号）
+                cur += ch
+                if not stack and content_len >= self.min_chars:
+                    fragments.append(cur)
+                    cur = ""
+            else:
+                cur += ch
+        if cur.strip():
+            fragments.append(cur)
+        return [f for f in fragments if f.strip()]
+
+    def _length_split(self, text: str) -> List[str]:
+        """Step 3：逐字符累积；优先级标点且 ≥min 即切；≥max 强制切（标点/空格/硬切）；配对引号保护。"""
         blocks: List[str] = []
-        for frag in fragments:
-            frag_blocks = self._length_seg.split_text(frag)
-            if not frag_blocks:
-                frag_blocks = [frag]
-            blocks.extend(frag_blocks)
+        cur = ""
+        stack: List[str] = []
+        for ch in text:
+            cur += ch
+            if ch in LEFT_QUOTES:
+                stack.append(ch)
+            elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
+                stack.pop()
+            is_punct = ch in PRIORITY_PUNCT or ch in (" ", "\n", "\u3000")
+            if is_punct and len(cur) >= self.min_chars:
+                blocks.append(cur)
+                cur = ""
+            elif len(cur) >= self.max_chars and not stack:
+                pos = self._find_split_pos(cur)
+                if pos > 0:
+                    blocks.append(cur[:pos])
+                    cur = cur[pos:]
+                else:
+                    blocks.append(cur)
+                    cur = ""
+            elif len(cur) >= self.max_chars * 2 and stack:
+                blocks.append(cur)
+                cur = ""
+                stack = []
+        if cur:
+            blocks.append(cur)
+        return [b for b in blocks if b.strip()]
 
-        # v0.11.0: 诊断日志 — 检测超长块
-        for b in blocks:
-            if len(b) > self.max_chars * 2:
-                logger.warning(f"Block too long after split: {len(b)} chars: {b[:30]}...")
-
-        # 后处理: 把太短的首块合并到上一块, 末尾太短合并到上一块
-        # v0.11.0: 有引号分割时跳过合并，避免引号内容与叙述粘连
-        if not has_quotes:
-            blocks = self._merge_short(blocks)
-
-        # v0.10.1: 字幕后处理 — 开头标点修正、末尾标点去除、跨块引号清理
-        blocks = self._clean_subtitle_blocks(blocks)
-
-        # v0.12.0: 块内句号切分 — 在句号处切分多句话的块
-        blocks = self._split_at_sentence_boundaries(blocks)
-
-        # v0.11.0: 超长块强制再分割 — 清理/合并后仍超 max_chars 的块强制再切
-        blocks = self._enforce_max_length(blocks)
-
-        return self._assign_timestamps(blocks, parent_duration, parent_id)
+    @staticmethod
+    def _find_split_pos(text: str) -> int:
+        """从后往前找最近优先级标点/空格的分割位置（返回切后索引；无则 -1）。"""
+        for i in range(len(text) - 1, -1, -1):
+            if text[i] in PRIORITY_PUNCT:
+                return i + 1
+        for i in range(len(text) - 1, -1, -1):
+            if text[i] in (" ", "\n", "\u3000"):
+                return i + 1
+        return -1
 
     def _merge_short(self, blocks: List[str]) -> List[str]:
-        """合并 < min_chars 的块或纯标点短块。
-
-        规则:
-        1. 前一块 < min_chars → 合并
-        2. 当前块 <= 2 字且全是标点（含引号） → 无条件合并到前一块
-        """
+        """Step 4：前块 <min 合并；纯标点短块（≤2）并入前块；短尾（≤3 且前块 ≥min）并入前块。"""
         if not blocks:
             return blocks
         merged = [blocks[0]]
         for b in blocks[1:]:
             b_stripped = b.strip()
-            # v0.10.1: 扩展纯标点集合，包含引号字符
-            is_punct_tail = len(b_stripped) <= 2 and all(c in _PUNCT_CHARS for c in b_stripped)
+            is_punct_tail = len(b_stripped) <= 2 and all(
+                c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b_stripped
+            )
             is_short_tail = len(b_stripped) <= 3 and len(merged[-1]) >= self.min_chars
             if len(merged[-1]) < self.min_chars or is_punct_tail or is_short_tail:
                 merged[-1] = merged[-1] + b
@@ -108,354 +202,106 @@ class SubtitleSegmenter:
                 merged.append(b)
         return [b for b in merged if b.strip()]
 
-    def _clean_subtitle_blocks(self, blocks: List[str]) -> List[str]:
-        """v0.10.1: 字幕后处理（4 步管线）。
+    def _clean(self, blocks: List[str]) -> List[str]:
+        """Step 5：trim → 开头标点修正 → 跨块引号清理（先删引号暴露标点）→ 末尾标点去除 → 再去除。
 
-        1. 开头标点修正: 如果块以 ，、。！？； 开头，将该标点移到上一块末尾
-        2. 末尾标点去除: 去掉每个块末尾的标点符号
-        3. 跨块引号清理: 两遍匹配 — 块内配对优先，跨块未配对引号删除
-        4. 再次去除标点: 引号删除后可能暴露新的末尾/开头标点
+        顺序要点：必须先清理跨块引号，否则 rstrip 会被孤立引号挡住（如 “。” 的 “。” 在引号后）。
         """
+        blocks = [b.strip() for b in blocks if b.strip()]
         if not blocks:
-            return blocks
-
-        # --- Step 1: 开头标点修正 ---
-        LEADING_PUNCT = frozenset("，、。！？；.!?;")
+            return []
+        # 子步 1：开头标点修正（首块开头标点删除，后续块开头标点前移）
         fixed = [blocks[0]]
+        if fixed[0] and fixed[0][0] in LEADING_PUNCT:
+            fixed[0] = fixed[0][1:]
         for b in blocks[1:]:
-            if b and b[0] in LEADING_PUNCT:
-                # 把开头标点移到上一块末尾
+            if b and b[0] in LEADING_PUNCT and fixed[-1]:
                 fixed[-1] = fixed[-1] + b[0]
                 b = b[1:]
-            if b:  # 可能移走后变空
+            if b:
                 fixed.append(b)
-        blocks = fixed
-
-        # --- Step 2: 末尾标点去除 ---
-        blocks = [b.rstrip("。！？；，、.!?;…\n") if b else b for b in blocks]
-        # 过滤空块
+        blocks = [b for b in fixed if b.strip()]
+        # 子步 2：跨块引号清理（块内成对保留，未配对删除）— 必须先于末尾标点去除
+        blocks = self._clean_cross_quotes(blocks)
+        # 子步 3：末尾标点去除（引号已清理，标点可被 rstrip 命中）
+        blocks = [b.rstrip("".join(TRAILING_PUNCT)) for b in blocks]
         blocks = [b for b in blocks if b.strip()]
+        # 子步 4：再去除（开头修正 + trim）
+        out = []
+        for b in blocks:
+            nb = b
+            if nb and nb[0] in LEADING_PUNCT and out:
+                out[-1] = out[-1] + nb[0]
+                nb = nb[1:]
+            nb = nb.rstrip("".join(TRAILING_PUNCT)).strip()
+            if nb:
+                out.append(nb)
+        return out
 
-        # --- Step 3: 跨块引号清理（两遍匹配）---
-        LEFT_QUOTES = {q[0] for q in _CROSS_BLOCK_QUOTES}
-        RIGHT_QUOTES = {q[1] for q in _CROSS_BLOCK_QUOTES}
-        _Q_MAP = {}
-        for lq, rq in _CROSS_BLOCK_QUOTES:
-            _Q_MAP[lq] = rq
-            _Q_MAP[rq] = lq
-
-        # 收集所有引号位置
-        quote_positions = []  # (block_idx, char_idx, quote_char)
-        for bi, block in enumerate(blocks):
-            for ci, ch in enumerate(block):
-                if ch in LEFT_QUOTES or ch in RIGHT_QUOTES:
-                    quote_positions.append((bi, ci, ch))
-
-        if not quote_positions:
-            return blocks
-
-        matched = set()  # 已匹配的 (block_idx, char_idx)
-
-        # Pass 1: 块内匹配 — 同一块内的配对引号优先匹配
-        for bi, block in enumerate(blocks):
-            stack = []  # (char_idx, quote_char)
-            for ci, ch in enumerate(block):
-                if ch in LEFT_QUOTES:
-                    stack.append((ci, ch))
-                elif ch in RIGHT_QUOTES:
-                    expected_left = _Q_MAP.get(ch)
-                    if stack and stack[-1][1] == expected_left:
-                        prev_ci, _ = stack.pop()
-                        matched.add((bi, prev_ci))
-                        matched.add((bi, ci))
-
-        # Pass 2: 跨块匹配 — 对剩余未匹配的引号做全局栈匹配
-        remaining = [(bi, ci, ch) for bi, ci, ch in quote_positions if (bi, ci) not in matched]
-        stack = []  # (block_idx, char_idx, quote_char)
-        cross_matched = set()
-        for bi, ci, ch in remaining:
-            if ch in LEFT_QUOTES:
-                stack.append((bi, ci, ch))
-            elif ch in RIGHT_QUOTES:
-                expected_left = _Q_MAP.get(ch)
-                found = None
-                for si in range(len(stack) - 1, -1, -1):
-                    if stack[si][2] == expected_left:
-                        found = si
-                        break
-                if found is not None:
-                    cross_matched.add((stack[found][0], stack[found][1]))
-                    cross_matched.add((bi, ci))
-                    stack.pop(found)
-
-        # 跨块匹配成功的引号 → 删除（因为配对分在不同块中）
-        # 块内匹配成功的引号 → 保留
-        # 完全未匹配的引号 → 删除
-        to_remove = set()
-        # 未匹配且不在 cross_matched 中的 → 删除
-        for bi, ci, ch in quote_positions:
-            if (bi, ci) in matched:
-                continue  # 块内配对，保留
-            if (bi, ci) in cross_matched:
-                to_remove.add((bi, ci))  # 跨块配对，删除两个
-            else:
-                to_remove.add((bi, ci))  # 未配对，删除
-
-        if to_remove:
-            remove_by_block = {}
-            for bi, ci in to_remove:
-                remove_by_block.setdefault(bi, set()).add(ci)
-            new_blocks = []
-            for bi, block in enumerate(blocks):
-                if bi in remove_by_block:
-                    indices = remove_by_block[bi]
-                    new_block = "".join(ch for ci, ch in enumerate(block) if ci not in indices)
-                    new_blocks.append(new_block)
-                else:
-                    new_blocks.append(block)
-            blocks = [b for b in new_blocks if b.strip()]
-
-        # --- Step 4: 引号清理后再次去除末尾/开头标点 ---
-        # 删除引号后，原本紧挨引号的标点可能暴露为新的末尾/开头
-        LEADING_PUNCT2 = frozenset("，、。！？；.!?:;")
-        blocks = [b.rstrip("。！？；，、.!?;…\n") if b else b for b in blocks]
-        # 开头标点修正（再来一次）
-        if len(blocks) >= 2:
-            fixed2 = [blocks[0]]
-            for b in blocks[1:]:
-                if b and b[0] in LEADING_PUNCT2:
-                    fixed2[-1] = fixed2[-1] + b[0]
-                    b = b[1:]
-                if b:
-                    fixed2.append(b)
-            blocks = fixed2
-        blocks = [b for b in blocks if b.strip()]
-
-        return blocks
-
-    # v0.11.0: 引号感知预分割
-    _QUOTE_PAIRS = [
-        ("\u201c", "\u201d"),  # " "
-        ("\u300c", "\u300d"),  # 「 」
-        ('"', '"'),
-        ("'", "'"),
-    ]
-
-    def _split_at_quote_boundaries(self, text: str) -> List[str]:
-        """v0.11.0 R1: 在引号边界处预分割文本。
-
-        规则:
-        - 每对引号（含内部标点）作为一个独立片段
-        - 引号后的叙述文字作为另一个片段
-        - 避免引号内容跨越 LengthSegmenter 的 max_chars 窗口导致配对锁定
-
-        示例:
-        - '"不对，"宴会散后...' → ['"不对，"', '宴会散后...']
-        - '"异教徒！"他们狞笑着。' → ['"异教徒！"', '他们狞笑着。']
-        - '质问："天朝...？' → ['质问：', '"天朝...？']
-        """
-        if not text:
-            return [text] if text else []
-
-        # 找到所有引号对的 (start, end) 位置
-        quote_spans = []  # (start_idx, end_idx) inclusive
-        for lq, rq in self._QUOTE_PAIRS:
-            i = 0
-            while i < len(text):
-                l = text.find(lq, i)
-                if l < 0:
-                    break
-                r = text.find(rq, l + 1)
-                if r < 0:
-                    break  # 未闭合引号，跳过
-                quote_spans.append((l, r))
-                i = r + 1
-
-        if not quote_spans:
-            return [text]
-
-        # 按起始位置排序
-        quote_spans.sort()
-
-        # 在每个引号对的闭合引号后切分
-        # 切分点 = 闭合引号位置 + 1（含闭合引号后的紧跟标点）
-        fragments = []
-        prev_end = 0
-
-        for start, end in quote_spans:
-            # 引号前的文本（叙述部分）
-            if start > prev_end:
-                before = text[prev_end:start]
-                if before.strip():
-                    fragments.append(before)
-
-            # 引号内的内容（含引号）
-            quote_content = text[start : end + 1]
-            # 检查闭合引号后是否有紧跟的标点（如 ？！，）
-            after_pos = end + 1
-            if after_pos < len(text) and text[after_pos] in _TRAILING_PUNCT:
-                quote_content += text[after_pos]
-                after_pos += 1
-            fragments.append(quote_content)
-            prev_end = after_pos
-
-        # 剩余文本（最后一个引号后的叙述）
-        if prev_end < len(text):
-            remaining = text[prev_end:]
-            if remaining.strip():
-                fragments.append(remaining)
-
-        return fragments if fragments else [text]
-
-    def _enforce_max_length(self, blocks: List[str]) -> List[str]:
-        """v0.11.0 R2: 清理后仍超过 max_chars 的块，强制用标点再分。
-
-        逻辑:
-        1. 遍历每个块，如果 len > max_chars
-        2. 在块内找优先级标点切分
-        3. 找不到标点时，在 max_chars 位置硬切
-        4. 短尾合并到前一块
-        """
-        SPLIT_PUNCT = frozenset("，、。！？；：.!?;:")
-        result = []
-
-        for block in blocks:
-            if len(block) <= self.max_chars:
-                result.append(block)
-                continue
-
-            # 需要再分
-            sub_blocks = self._force_split(block, self.max_chars, SPLIT_PUNCT)
-            result.extend(sub_blocks)
-
-        return result
-
-    # v0.12.0: 块内句号切分 — 避免两句话显示在同一屏
-    _SENTENCE_TERMINATORS = frozenset("。！？")
-
-    def _split_at_sentence_boundaries(self, blocks: List[str]) -> List[str]:
-        """v0.12.0: 在块内的句子终止标点处切分，避免两句话显示在同一屏。
-
-        当一个块包含多个句子\uff08如 "李慈的忠心。至于满朝文官"\uff09，
-        在句号处切分为两个独立的字幕块，不论块长度。
-        """
-        result = []
-        for block in blocks:
-            # 检查块内是否有句子终止标点在中间位置\uff08非首非尾\uff09
-            has_mid_sentence = False
-            for i, ch in enumerate(block):
-                if ch in self._SENTENCE_TERMINATORS and i > 0 and i < len(block) - 1:
-                    has_mid_sentence = True
-                    break
-
-            if not has_mid_sentence:
-                result.append(block)
-                continue
-
-            # 找块内的句子终止标点，在此处切分
-            # v0.12.0: 不限制 min_chars — 句号处必须切分，即使前句较短
-            parts = []
-            current = ""
-            for ch in block:
-                current += ch
-                if ch in self._SENTENCE_TERMINATORS:
-                    parts.append(current)
-                    current = ""
-            if current:
-                parts.append(current)
-            result.extend(parts)
-        return result
+    def _clean_cross_quotes(self, blocks: List[str]) -> List[str]:
+        """Step 5 子步 3：块内成对引号保留；孤立（跨块）引号删除。"""
+        out: List[str] = []
+        for b in blocks:
+            out.append(self._drop_unpaired_quotes(b))
+        return [b for b in out if b.strip()]
 
     @staticmethod
-    def _force_split(text: str, max_chars: int, punct_set: frozenset) -> List[str]:
-        """将超长文本按标点或硬切分成 <= max_chars 的块。"""
-        chunks = []
-        remaining = text
+    def _drop_unpaired_quotes(text: str) -> str:
+        """删除文本中未配对的引号（块内成对保留）。"""
+        stack: List[int] = []
+        drop = [False] * len(text)
+        for i, ch in enumerate(text):
+            if ch in LEFT_QUOTES:
+                stack.append(i)
+            elif ch in RIGHT_QUOTES:
+                if stack and QUOTE_MAP.get(text[stack[-1]]) == ch:
+                    stack.pop()
+                else:
+                    drop[i] = True
+        for idx in stack:
+            drop[idx] = True
+        return "".join(ch for i, ch in enumerate(text) if not drop[i])
 
-        while len(remaining) > max_chars:
-            # 在 remaining[:max_chars] 内找最右的优先级标点
-            head = remaining[:max_chars]
-            best = 0
-            for i in range(len(head) - 1, -1, -1):
-                if head[i] in punct_set:
-                    best = i + 1  # 含标点
-                    break
+    def _enforce_max(self, blocks: List[str]) -> List[str]:
+        """Step 6：清理后仍 > max_chars 的块强制切分（标点优先，无标点硬切）。
 
-            if best > 0:
-                chunks.append(remaining[:best])
-                remaining = remaining[best:]
-            else:
-                # 找不到标点 — 硬切
-                chunks.append(remaining[:max_chars])
-                remaining = remaining[max_chars:]
+        注意：切分点必须在块内部（pos < len），块尾标点不作为切分锚点
+        （块尾标点由 Step 5 去除，且依赖它切分会产生无效零长度切分）。
+        """
+        out: List[str] = []
+        for b in blocks:
+            while len(b) > self.max_chars:
+                pos = self._find_split_pos(b)
+                if pos <= 0 or pos >= len(b):
+                    pos = self.max_chars
+                out.append(b[:pos])
+                b = b[pos:]
+            if b:
+                out.append(b)
+        return out
 
-        if remaining:
-            # 短尾合并：仅当合并后仍 <= max_chars 时才合并
-            if chunks and len(remaining) < 3 and len(chunks[-1]) + len(remaining) <= max_chars:
-                chunks[-1] += remaining
-            else:
-                chunks.append(remaining)
-
-        return chunks
-
-    def _assign_timestamps(
-        self,
-        blocks: List[str],
-        parent_duration: float,
-        parent_id: int,
-    ) -> List[SubtitleBlock]:
-        """为字幕块分配时间戳。"""
-        if not blocks:
+    # ── Step 7 时间戳 ───────────────────────────────────
+    def _assign_timestamps(self, blocks: List[str], parent_duration: float, parent_id: int) -> List[SubtitleBlock]:
+        n = len(blocks)
+        if n == 0:
             return []
-
         if self.time_method == "equal":
-            return self._equal_timestamps(blocks, parent_duration, parent_id)
-        return self._proportional_timestamps(blocks, parent_duration, parent_id)
-
-    def _equal_timestamps(
-        self,
-        blocks: List[str],
-        parent_duration: float,
-        parent_id: int,
-    ) -> List[SubtitleBlock]:
-        """平均分配时间。"""
-        block_dur = parent_duration / len(blocks)
-        result = []
-        for i, text in enumerate(blocks):
-            result.append(
+            durs = [parent_duration / n] * n
+        else:
+            total = sum(len(b) for b in blocks)
+            durs = [(len(b) / total * parent_duration) if total else parent_duration / n for b in blocks]
+        subs: List[SubtitleBlock] = []
+        t = 0.0
+        for i, b in enumerate(blocks):
+            d = round(durs[i], 2)
+            subs.append(
                 SubtitleBlock(
-                    text=text,
+                    text=b,
                     display_order=i,
-                    start_time=i * block_dur,
-                    duration=block_dur,
+                    start_time=round(t, 2),
+                    duration=d,
                     parent_segment_id=parent_id,
                 )
             )
-        return result
-
-    def _proportional_timestamps(
-        self,
-        blocks: List[str],
-        parent_duration: float,
-        parent_id: int,
-    ) -> List[SubtitleBlock]:
-        """按字数比例分配时间。"""
-        total_chars = sum(len(b) for b in blocks)
-        if total_chars == 0:
-            return []
-
-        result = []
-        current_time = 0.0
-        for i, text in enumerate(blocks):
-            dur = (len(text) / total_chars) * parent_duration
-            result.append(
-                SubtitleBlock(
-                    text=text,
-                    display_order=i,
-                    start_time=current_time,
-                    duration=dur,
-                    parent_segment_id=parent_id,
-                )
-            )
-            current_time += dur
-        return result
+            t += durs[i]
+        return subs

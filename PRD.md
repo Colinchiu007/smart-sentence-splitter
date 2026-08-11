@@ -154,6 +154,17 @@ POST /v1/split → scenes[].subtitles[]
 **版本注记**：v0.5.0–v0.12.x 的 `SceneResponse` 仅含 `subtitle_count`（实现缺口，
 非设计意图）；v0.13 起全量透传 `subtitles[]`。
 
+### v0.14 — 字幕分割规则统一（规范 v1.0）
+
+| 项 | 说明 |
+|------|------|
+| 规范文档 | `docs/subtitle-segmentation-spec.md` — 字幕分割规范 v1.0（7 步流水线），**双实现共享**（本仓库 Python + Multi-Publish story2video-engine TypeScript） |
+| 算法流水线 | Step 1 分句（块不跨句，引号内句界保护）→ Step 2 引号感知预分割（引号内容 ≥ min_chars 才分离）→ Step 3 长度切分（标点优先 + 引号保护，8-15 字）→ Step 4 短块合并 → Step 5 标点规范化（开头修正 / 跨块引号清理 / 末尾去除）→ Step 6 超长强制 → Step 7 时间戳（proportional/equal） |
+| 数据校验 | 输入去空白非空；配置 min ∈ [1,max]、max ≤ 64；输出无空块/纯标点块/超 max×2 块；display_order 连续；确定性（无随机）；双实现跑同一向量逐字一致 |
+| 测试向量 | `tests/vectors/subtitle_segmentation_vectors.json`（16 例：简单句/多句/引号/书名号/无标点长句/开头标点/纯标点尾/短句/分号/省略号/英文/混合长场景/嵌套引号/顿号列表） |
+| 双实现一致性 | Python `tests/unit/test_subtitle_vectors.py` 32 断言 + TypeScript `subtitle-vectors.test.ts` 18 断言，同一向量 |
+| 与 v0.13 关系 | v0.13 打通字幕层 API 透传；v0.14 统一字幕**分割行为**（非契约字段变更，字段不变） |
+
 ### 未来规划 (v1.0+)
 
 | 功能 | 优先级 | 状态 |
