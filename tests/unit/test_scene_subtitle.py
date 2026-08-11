@@ -213,16 +213,16 @@ class TestQuoteAwareSplitting:
         return [s.text for s in subs]
 
     def test_quote_narrative_boundary(self):
-        """引号内容与叙述文字应分属不同块。"""
-        blocks = self._get_blocks(
-            "\u201c\u4e0d\u5bf9\uff0c\u201d\u5bb4\u4f1a\u6563\u540e\uff0c\u963f\u5e93\u5c3c\u4e9a\u5bf9\u526f\u5b98\u4f4e\u8bed"
-        )
-        # 第一块应只含引号内容（“不对，”）
-        assert "\u4e0d\u5bf9" in blocks[0]  # “不对”在第一块
-        # 叙述文字应在单独的块中
-        assert any("\u5bb4\u4f1a\u6563\u540e" in b for b in blocks[1:])  # “宴会散后”在后续块
-        # 引号内容和叙述不应在同一块
-        assert not any("\u4e0d\u5bf9" in b and "\u5bb4\u4f1a\u6563\u540e" in b for b in blocks)
+        """引号内容与叙述文字应分属不同块（规范 v1.0 Step 2：引号内容 >= min_chars 才分离）。"""
+        # 短引号内容（"不对，"4 字 < min_chars=8）并入上下文，不强制分离
+        blocks = self._get_blocks("“不对，”宴会散后，阿库尼亚对副官低语")
+        assert blocks, "应有字幕块"
+        assert "不对" in blocks[0]  # 短引号内容在第一块
+        # 长引号内容（>= min_chars）应与叙述分离
+        blocks2 = self._get_blocks("他说：“最近常来这里，清晨的空气最清新。”我点点头，继续往前走。")
+        assert any("最近常来" in b for b in blocks2)
+        assert any("我点点头" in b for b in blocks2)
+        assert not any("最近常来" in b and "我点点头" in b for b in blocks2)
 
     def test_quote_exclamation_separate(self):
         """引号+叹号后跟叙述，应分开。"""
@@ -233,15 +233,15 @@ class TestQuoteAwareSplitting:
         assert any("\u4ed6\u4eec\u72de\u7b11\u7740" in b for b in blocks[1:])
 
     def test_colon_before_quote(self):
-        """冒号+引号内容，应在冒号处分开。"""
-        blocks = self._get_blocks(
-            "\u4f5c\u966a\u7684\u83f2\u5f8b\u5bbe\u914b\u957f\u76f4\u63a5\u8d28\u95ee\uff1a\u201c\u5929\u671d\u51ed\u4ec0\u4e48\u6765\u6211\u4eec\u8fd9\u513f\u52d8\u6d4b\u5c71\u5ddd\u201d\uff1f"
-        )
+        """冒号+长引号内容：叙述与引号内容分开（跨块引号清理）。"""
+        blocks = self._get_blocks("作陪的菲律宾酋长直接质问：“天朝凭什么来我们这儿勘测山川”？")
         # 应有两块以上
         assert len(blocks) >= 2
-        # 冒号前的叙述和引号内容应分开
-        assert any("\u8d28\u95ee" in b for b in blocks)
-        assert any("\u5929\u671d" in b for b in blocks)
+        # 冒号前的叙述保留
+        assert any("质问" in b for b in blocks)
+        # 引号内容保留（无孤立引号字符）
+        assert any("勘测山川" in b for b in blocks)
+        assert not any("“" in b or "”" in b for b in blocks)  # 跨块引号已清理
 
     def test_no_quotes_no_split(self):
         """无引号文本不受影响。"""
@@ -256,16 +256,16 @@ class TestEnforceMaxLength:
     def test_long_block_forced_split(self):
         """超过 max_chars 的块应被强制分割。"""
         seg = SubtitleSegmenter()
-        # 直接测试 _enforce_max_length
+        # 直接测试 _enforce_max（规范 Step 6）
         blocks = ["这是一段很长的文本超过了十五个字符的限制"]
-        result = seg._enforce_max_length(blocks)
+        result = seg._enforce_max(blocks)
         assert all(len(b) <= 15 for b in result)
 
     def test_short_block_unchanged(self):
         """不超过 max_chars 的块不受影响。"""
         seg = SubtitleSegmenter()
         blocks = ["短文本", "另一个短文本"]
-        result = seg._enforce_max_length(blocks)
+        result = seg._enforce_max(blocks)
         assert result == blocks
 
     def test_long_sentence_split(self):

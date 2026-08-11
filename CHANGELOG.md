@@ -1,3 +1,26 @@
+## [0.14.0] - 2026-08-11
+
+### ✨ feat(subtitle): 字幕分割规则统一（规范 v1.0，方案 C）
+
+- 新增《字幕分割规范 v1.0》`docs/subtitle-segmentation-spec.md`：7 步流水线（分句 → 引号感知 → 长度切分 → 短块合并 → 标点规范化 → 超长强制 → 时间戳），双实现共享
+- `SubtitleSegmenter` 重构为规范实现：
+  - Step 1 分句优先（块不跨句；未闭合引号内句界不生效，保护引号配对）
+  - Step 2 引号感知预分割（引号内容 ≥ min_chars 才分离，短引号并入上下文）
+  - Step 5 标点规范化顺序修正：先跨块引号清理再末尾标点去除（避免 rstrip 被孤立引号挡住）
+  - Step 6 超长强制切分点须在块内部；强制切分后再清理一次（消除新孤立引号）
+  - 过滤空块与纯标点块（规范 3 数据校验）
+- 新增共享测试向量 `tests/vectors/subtitle_segmentation_vectors.json`（16 例）+ `tests/unit/test_subtitle_vectors.py`（32 断言）
+- 双实现一致性：Multi-Publish story2video-engine TypeScript 实现跑同一向量全通过（16/16）
+
+### 变更文件
+
+| 文件 | 说明 |
+|------|------|
+| `docs/subtitle-segmentation-spec.md` | 新增 — 字幕分割规范 v1.0（双实现共享） |
+| `src/splitter/scene_subtitle/subtitle_segmenter.py` | 重构 — 规范 7 步流水线 |
+| `tests/vectors/subtitle_segmentation_vectors.json` | 新增 — 共享测试向量（16 例） |
+| `tests/unit/test_subtitle_vectors.py` | 新增 — 向量断言测试（32 例） |
+| `tests/unit/test_scene_subtitle.py` | 更新 — 对齐规范行为断言 |
 ## [0.12.1] - 2026-08-11
 
 ### ✨ feat(api): /v1/split 场景层透传字幕层（subtitles[]）
