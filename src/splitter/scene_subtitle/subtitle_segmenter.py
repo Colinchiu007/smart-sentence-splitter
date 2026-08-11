@@ -14,6 +14,7 @@
 
 配置（兼容旧键）：min_chars_per_block / max_chars_per_block / time_calculation_method。
 """
+
 from __future__ import annotations
 from typing import List
 
@@ -81,16 +82,20 @@ class SubtitleSegmenter:
     def _split_to_blocks(self, text: str) -> List[str]:
         """Step 1-6：分句 → 引号 → 长度 → 合并 → 标点 → 强制。"""
         all_blocks: List[str] = []
-        for sentence in self._split_sentences(text):          # Step 1
+        for sentence in self._split_sentences(text):  # Step 1
             for fragment in self._split_quote_boundaries(sentence):  # Step 2
-                blocks = self._length_split(fragment)          # Step 3
-                blocks = self._merge_short(blocks)             # Step 4
-                blocks = self._clean(blocks)                   # Step 5
-                blocks = self._enforce_max(blocks)             # Step 6
-                blocks = self._clean(blocks)                   # Step 6 后清理：强制切分可能产生新孤立引号/标点
+                blocks = self._length_split(fragment)  # Step 3
+                blocks = self._merge_short(blocks)  # Step 4
+                blocks = self._clean(blocks)  # Step 5
+                blocks = self._enforce_max(blocks)  # Step 6
+                blocks = self._clean(blocks)  # Step 6 后清理：强制切分可能产生新孤立引号/标点
                 all_blocks.extend(blocks)
         # 规范 3：过滤空块与纯标点块（含孤立引号）
-        return [b for b in all_blocks if b.strip() and not all(c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b)]
+        return [
+            b
+            for b in all_blocks
+            if b.strip() and not all(c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b)
+        ]
 
     def _split_sentences(self, text: str) -> List[str]:
         """Step 1：按句界切分（句界字符归属前块）；未闭合引号内的句界不生效（保护引号配对）。"""
@@ -188,7 +193,8 @@ class SubtitleSegmenter:
         for b in blocks[1:]:
             b_stripped = b.strip()
             is_punct_tail = len(b_stripped) <= 2 and all(
-                c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b_stripped)
+                c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b_stripped
+            )
             is_short_tail = len(b_stripped) <= 3 and len(merged[-1]) >= self.min_chars
             if len(merged[-1]) < self.min_chars or is_punct_tail or is_short_tail:
                 merged[-1] = merged[-1] + b
@@ -288,12 +294,14 @@ class SubtitleSegmenter:
         t = 0.0
         for i, b in enumerate(blocks):
             d = round(durs[i], 2)
-            subs.append(SubtitleBlock(
-                text=b,
-                display_order=i,
-                start_time=round(t, 2),
-                duration=d,
-                parent_segment_id=parent_id,
-            ))
+            subs.append(
+                SubtitleBlock(
+                    text=b,
+                    display_order=i,
+                    start_time=round(t, 2),
+                    duration=d,
+                    parent_segment_id=parent_id,
+                )
+            )
             t += durs[i]
         return subs
