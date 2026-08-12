@@ -30,6 +30,14 @@ SENTENCE_BOUNDARY = set("。！？…!?.")
 # Step 3 优先级标点（空格/换行单独判定）
 PRIORITY_PUNCT = set("。！？；.!?;，,、")
 
+# Step 3/6 顿号枚举单元保护（v1.1）：
+# 枚举结束判定的更高优先级标点（顿号之上）
+ENUM_HIGHER_PUNCT = set("。！？；…,!?;.")
+# 枚举结束判定的谓词/主语引导词（常见分句起始字，启发式）
+ENUM_PREDICATE_STARTERS = set("那这我就便都也很更将会要能可是有为")
+# 枚举项连接词（顿号项之间可含 和/及/与 连接末项）
+ENUM_CONNECTORS = set("和及与")
+
 # Step 5 开头修正标点
 LEADING_PUNCT = set("，、。！？；,!?;.")
 
@@ -165,7 +173,7 @@ class SubtitleSegmenter:
                 cur = ""
                 last_hard_cut = False
             elif len(cur) >= self.max_chars and not stack:
-                pos = self._find_split_pos(cur)
+                pos = self._apply_enumeration_shift(cur, self._find_split_pos(cur), require_tail_min=False)
                 if pos > 0:
                     blocks.append(cur[:pos])
                     cur = cur[pos:]
@@ -198,12 +206,19 @@ class SubtitleSegmenter:
 
     @staticmethod
     def _find_split_pos(text: str) -> int:
-        """从后往前找最近优先级标点/空格的分割位置（返回切后索引；无则 -1）。"""
+        """从后往前找切分锚点（返回切后索引；无则 -1）。
+
+        v1.1 顿号优先级最低：先找更高优先级标点（顿号除外），再找空格，最后顿号兜底——
+        保证"仅当块内无更高优先级标点时才以顿号为锚点"，配合 _enumeration_end 实现枚举整体切分。
+        """
         for i in range(len(text) - 1, -1, -1):
-            if text[i] in PRIORITY_PUNCT:
+            if text[i] in PRIORITY_PUNCT and text[i] != "、":
                 return i + 1
         for i in range(len(text) - 1, -1, -1):
             if text[i] in (" ", "\n", "\u3000"):
+                return i + 1
+        for i in range(len(text) - 1, -1, -1):
+            if text[i] == "、":
                 return i + 1
         return -1
 
@@ -295,7 +310,7 @@ class SubtitleSegmenter:
         out: List[str] = []
         for b in blocks:
             while len(b) > self.max_chars:
-                pos = self._find_split_pos(b)
+                pos = self._apply_enumeration_shift(b, self._find_split_pos(b))
                 if pos <= 0 or pos >= len(b):
                     pos = self.max_chars
                 # 平衡约束：尾块 < min_chars 时前移切分点
@@ -308,6 +323,38 @@ class SubtitleSegmenter:
             if b:
                 out.append(b)
         return out
+
+    @staticmethod
+    def _enumeration_end(text: str, pos: int) -> int:
+        """顿号枚举单元结束位置（v1.1）。
+
+        从顿号后一字符 pos 向后扫描：枚举项以 、 分隔，可含 和/及/与 连接的末项；
+        结束于：更高优先级标点、谓词/主语引导词（常见分句起始字）、或片段尾。
+        返回枚举结束后的索引（切分点）；无顿号模式返回 pos。
+        """
+        i = pos
+        n = len(text)
+        while i < n:
+            ch = text[i]
+            if ch in ENUM_HIGHER_PUNCT or ch in ENUM_PREDICATE_STARTERS:
+                return i
+            i += 1
+        return n
+
+    def _apply_enumeration_shift(self, text: str, pos: int, require_tail_min: bool = True) -> int:
+        """若切分锚点落在顿号上，把切分点前移到枚举单元结束之后。
+
+        - 头块 ≤ max_chars 才生效；
+        - require_tail_min=True（Step 6 完整块）：尾块 ≥ min_chars 才生效，否则交给平衡切分/回退顿号切；
+        - require_tail_min=False（Step 3 累积期）：跳过尾块检查——此时 cur 还在累积，尾块长度未定型。
+        """
+        if pos <= 0 or pos >= len(text) or text[pos - 1] != "、":
+            return pos
+        eend = self._enumeration_end(text, pos)
+        if eend > pos and eend <= self.max_chars:
+            if not require_tail_min or len(text) - eend >= self.min_chars:
+                return eend
+        return pos
 
     @staticmethod
     def _find_split_pos_in_range(text: str, lo: int, hi: int) -> int:
