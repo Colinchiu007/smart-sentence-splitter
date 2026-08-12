@@ -1,7 +1,10 @@
 # 字幕分割规范 v1.1（双实现共享）
 
 > 变更历史：v1.1 新增「顿号枚举单元整体保护」（Step 3/6 切分锚点优先级 + 枚举整体切分）与
-> 枚举单元定义/谓词引导词启发式；v1.0 为 7 步流水线基线（含 Step 6 平衡切分、Step 7 舍入后连续累加）。
+> 枚举单元定义/谓词引导词启发式；v0.15.1 统一时间戳 half-up 舍入；v0.15.2 引入**规则表单源**。
+> 机器可读规则表：`src/splitter/scene_subtitle/subtitle_rules.json`（Multi-Publish 存同步副本
+> `packages/story2video-engine/src/subtitle-rules.json`）——字符集/默认参数/舍入模式均由该表加载，
+> **两实现禁止再手写硬编码规则**；改规则 = 改表 + 双端跑共享向量与差分测试。
 
 > 目的：统一 smart-sentence-splitter（Python）与 Multi-Publish story2video-engine（TypeScript）
 > 两套字幕分割实现的行为，使**同一场景文本 → 同一字幕块序列**。

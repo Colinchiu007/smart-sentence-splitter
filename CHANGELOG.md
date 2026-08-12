@@ -1,3 +1,15 @@
+## [0.15.2] - 2026-08-12
+
+### ♻️ refactor(subtitle): 规则表单源（subtitle-rules.json，双实现共享）
+
+- 新增 `src/splitter/scene_subtitle/subtitle_rules.json`：字符集（句界/优先级标点/开头/末尾/引号对）、
+  默认 min/max、舍入模式（half_up, 2dp）、枚举判定（higher_punct/predicate_starters/connectors）统一由表加载；
+- Python 常量区重构为从规则表加载（`_RULES`），移除手写硬编码；Multi-Publish TypeScript 同步副本 +
+  `resolveJsonModule`，`DEFAULT_CONFIG` 默认值亦取自规则表；
+- 顺带对齐：`enum.higher_punct` 补全角逗号「，」（与规范 §5 一致；此前代码缺失）；
+- 规范头注明规则表单源纪律（改规则 = 改表 + 双端跑共享向量与差分测试）；
+- 验证：splitter 468 passed / 9 skipped；向量 80 断言全绿；跨实现差分 38/38 文本+时间戳一致。
+
 ## [0.15.1] - 2026-08-12
 
 ### 🐛 fix(subtitle): 时间戳舍入统一为 half-up（消除 Python/TS .xx5 边界分歧）

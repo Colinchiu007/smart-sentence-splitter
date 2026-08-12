@@ -1,4 +1,4 @@
-"""Subtitle segmenter (Layer 3) — 对齐《字幕分割规范 v1.0》。
+"""Subtitle segmenter (Layer 3) — 对齐《字幕分割规范 v1.1》。
 
 见 docs/subtitle-segmentation-spec.md（双实现共享：smart-sentence-splitter Python
 与 Multi-Publish story2video-engine TypeScript 输出同一字幕块序列）。
@@ -6,73 +6,69 @@
 规范 7 步流水线（顺序固定）：
   Step 1 分句边界保留（句子优先，块不跨句）
   Step 2 引号感知预分割（说话内容/叙述分离）
-  Step 3 长度切分（标点优先 + 配对引号保护，min/max）
+  Step 3 长度切分（标点优先 + 配对引号保护，min/max；顿号枚举单元整体保护 v1.1）
   Step 4 短块合并（前块 <min / 纯标点短块 / 短尾）
   Step 5 标点规范化（trim → 开头修正 → 末尾去除 → 跨块引号清理 → 再去除）
-  Step 6 超长强制分割
-  Step 7 时间戳分配（proportional / equal）
+  Step 6 超长强制分割（平衡切分 + 顿号枚举整体切分）
+  Step 7 时间戳分配（proportional / equal；half-up 舍入保留 2 位小数）
 
-配置（兼容旧键）：min_chars_per_block / max_chars_per_block / time_calculation_method。
+规则单源：所有字符集/参数/舍入模式从 subtitle_rules.json 加载
+（Multi-Publish 仓库存同步副本，两实现不得再手写硬编码规则）。
 """
 
 from __future__ import annotations
+
+import json
 import math
+from pathlib import Path
 from typing import List
 
 from ..models import SubtitleBlock, SceneSegment
 
-# ── 规范常量 ─────────────────────────────────────────────
-DEFAULT_MIN_CHARS = 8
-DEFAULT_MAX_CHARS = 15
+# ── 规则单源（subtitle_rules.json，双实现共享）────────────────────────────
+_RULES = json.loads((Path(__file__).resolve().parent / "subtitle_rules.json").read_text(encoding="utf-8"))
+
+# 默认配置（规范 3：非法配置回退默认）
+DEFAULT_MIN_CHARS = int(_RULES["defaults"]["min_chars_per_block"])
+DEFAULT_MAX_CHARS = int(_RULES["defaults"]["max_chars_per_block"])
+MAX_CHARS_CAP = int(_RULES["defaults"]["max_chars_cap"])
 
 # Step 1 句界字符（归属前块）
-SENTENCE_BOUNDARY = set("。！？…!?.")
+SENTENCE_BOUNDARY = set(_RULES["sentence_boundary"])
 
 # Step 3 优先级标点（空格/换行单独判定）
-PRIORITY_PUNCT = set("。！？；.!?;，,、")
+PRIORITY_PUNCT = set(_RULES["priority_punct"])
+
+# Step 3/6 顿号枚举单元保护（v1.1）：
+# 枚举结束判定的更高优先级标点（顿号之上，含全角逗号）
+ENUM_HIGHER_PUNCT = set(_RULES["enum"]["higher_punct"])
+# 枚举结束判定的谓词/主语引导词（常见分句起始字，启发式）
+ENUM_PREDICATE_STARTERS = set(_RULES["enum"]["predicate_starters"])
+# 枚举项连接词（顿号项之间可含 和/及/与 连接末项）
+ENUM_CONNECTORS = set(_RULES["enum"]["connectors"])
+
+# Step 5 开头修正标点
+LEADING_PUNCT = set(_RULES["leading_punct"])
+
+# Step 5 末尾去除标点
+TRAILING_PUNCT = set(_RULES["trailing_punct"])
+
+# Step 2 / Step 5 配对引号
+QUOTE_PAIRS = [tuple(pair) for pair in _RULES["quote_pairs"]]
+LEFT_QUOTES = {p[0] for p in QUOTE_PAIRS}
+RIGHT_QUOTES = {p[1] for p in QUOTE_PAIRS}
+QUOTE_MAP = dict(QUOTE_PAIRS)
 
 # 时间戳保留 2 位小数：四舍五入（half-up）——与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）
 # 背景：Python round() 为银行家舍入（0.625→0.62），JS 为四舍五入（0.625→0.63），差分测试证实
 # 两实现会在 .xx5 边界产生 0.01s 级分歧（等分场景累计 0.15s），故统一为 half-up。
-ROUND_DECIMALS = 2
+ROUND_DECIMALS = int(_RULES["rounding"]["decimal_places"])
 
 
 def _round2_half_up(x: float) -> float:
     """保留 2 位小数，四舍五入（half-up）。"""
-    factor = 10 ** ROUND_DECIMALS
+    factor = 10**ROUND_DECIMALS
     return math.floor(x * factor + 0.5) / factor
-
-
-# Step 3/6 顿号枚举单元保护（v1.1）：
-# 枚举结束判定的更高优先级标点（顿号之上）
-ENUM_HIGHER_PUNCT = set("。！？；…,!?;.")
-# 枚举结束判定的谓词/主语引导词（常见分句起始字，启发式）
-ENUM_PREDICATE_STARTERS = set("那这我就便都也很更将会要能可是有为")
-# 枚举项连接词（顿号项之间可含 和/及/与 连接末项）
-ENUM_CONNECTORS = set("和及与")
-
-# Step 5 开头修正标点
-LEADING_PUNCT = set("，、。！？；,!?;.")
-
-# Step 5 末尾去除标点
-TRAILING_PUNCT = set("。！？；，、.!?;…")
-
-# Step 2 / Step 5 配对引号
-QUOTE_PAIRS = [
-    ("\u201c", "\u201d"),  # " "
-    ("\u2018", "\u2019"),  # ' '
-    ("\u300c", "\u300d"),  # 「 」
-    ("\u300e", "\u300f"),  # 『 』
-    ("\u300a", "\u300b"),  # 《 》
-    ("\uff08", "\uff09"),  # （ ）
-    ("\u3010", "\u3011"),  # 【 】
-    ("[", "]"),
-    ('"', '"'),
-    ("'", "'"),
-]
-LEFT_QUOTES = {p[0] for p in QUOTE_PAIRS}
-RIGHT_QUOTES = {p[1] for p in QUOTE_PAIRS}
-QUOTE_MAP = dict(QUOTE_PAIRS)
 
 
 class SubtitleSegmenter:
