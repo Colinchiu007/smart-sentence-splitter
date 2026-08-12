@@ -104,7 +104,10 @@
 - 父场景时长 `parent_duration`（秒，来自场景层）。
 - `proportional`（默认）：`duration_i = len(text_i) / Σlen(text) × parent_duration`；
 - `equal`：`duration_i = parent_duration / n`；
-- **连续性约束**：`start_time_0 = 0`；`start_time_i = start_time_{i-1} + duration_{i-1}`（使用**舍入后的 duration** 累加，保证区间严格连续、互不重叠，不因浮点舍入产生 0.01s 间隙/重叠）；duration 保留 2 位小数。
+- **连续性约束**：`start_time_0 = 0`；`start_time_i = start_time_{i-1} + duration_{i-1}`（使用**舍入后的 duration** 累加，保证区间严格连续、互不重叠，不因浮点舍入产生 0.01s 间隙/重叠）；
+- **舍入模式（v0.15.1，双实现必须一致）**：duration 与 start_time 均**四舍五入（half-up）保留 2 位小数**——
+  `floor(x*100 + 0.5)/100`（Python）与 `Math.round(x*100)/100`（TypeScript）语义一致；
+  ⚠️ 禁止 Python 使用原生 `round(x, 2)`（银行家舍入）：0.625 会得 0.62 而 TS 得 0.63，产生 0.01s 级分歧（等分场景累计可达 0.15s）。
 
 ## 3. 数据校验（实现必须满足的断言）
 - [ ] 输入 text 去首尾空白后非空，否则返回空列表；
@@ -112,15 +115,15 @@
 - [ ] 输出无空块、无纯标点块（含孤立引号）、无 > max_chars×2 的块；
 - [ ] 输出块按 display_order 连续；
 - [ ] **min_chars 不变量**：每块清理后长度 ≥ min_chars，例外（独立短句/标点边界短片段/≤3 字短尾）必须在向量 `short_block_exceptions` 中显式声明（含 reason）；无标点硬切的孤悬尾块视为违规；
-- [ ] **时间戳严格连续**：`start_time_0 = 0`；`start_time_i == round(start_time_{i-1} + duration_{i-1}, 2)`（舍入后累加，严格相等，禁止 0.01s 级间隙/重叠）；`start_time`/`duration` 均保留 2 位小数；
+- [ ] **时间戳严格连续**：`start_time_0 = 0`；`start_time_i == round_half_up(start_time_{i-1} + duration_{i-1}, 2)`（**四舍五入 half-up** 舍入后累加，严格相等，禁止 0.01s 级间隙/重叠）；`start_time`/`duration` 均保留 2 位小数（half-up）；
 - [ ] 全部块文本拼接后，去除 Step 5 清理标点后与原文在"非标点字符"上一致（不丢正文）；
 - [ ] 同一输入 + 同一配置，两次运行结果一致（确定性，无随机）。
 
 ## 4. 双实现一致性要求
 - 两个实现必须通过**同一份测试向量**（见 tests/vectors/subtitle_segmentation_vectors.json）；
 - 向量断言：`expected_blocks`（仅文本序列，不含时间戳）必须逐字一致；
-- 时间戳断言：`time_method=proportional` 下**舍入后严格连续**（`start_time_i == round(start_time_{i-1} + duration_{i-1}, 2)`），
-  不允许使用宽容差（旧实现曾以 abs=0.02 漏检 0.01s 间隙）；
+- 时间戳断言：`time_method=proportional` 下**舍入后严格连续**（`start_time_i == round_half_up(start_time_{i-1} + duration_{i-1}, 2)`），
+  舍入模式统一为 half-up（与 TS `Math.round(x*100)/100` 一致），不允许使用宽容差（旧实现曾以 abs=0.02 漏检 0.01s 间隙）；
 - **min_chars 不变量断言**：每块长度 ≥ min_chars，例外必须在向量 `short_block_exceptions` 显式声明；
 - **向量双轨管理（防自证陷阱）**：`expected_blocks` 必须为**手工真值**（按本规范人工推导后再与实现输出核对），
   **禁止直接把实现输出写入向量**——自证会让实现与向量共同漂移，测试失去拦截力；

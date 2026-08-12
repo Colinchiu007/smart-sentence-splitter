@@ -16,6 +16,7 @@
 """
 
 from __future__ import annotations
+import math
 from typing import List
 
 from ..models import SubtitleBlock, SceneSegment
@@ -29,6 +30,18 @@ SENTENCE_BOUNDARY = set("。！？…!?.")
 
 # Step 3 优先级标点（空格/换行单独判定）
 PRIORITY_PUNCT = set("。！？；.!?;，,、")
+
+# 时间戳保留 2 位小数：四舍五入（half-up）——与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）
+# 背景：Python round() 为银行家舍入（0.625→0.62），JS 为四舍五入（0.625→0.63），差分测试证实
+# 两实现会在 .xx5 边界产生 0.01s 级分歧（等分场景累计 0.15s），故统一为 half-up。
+ROUND_DECIMALS = 2
+
+
+def _round2_half_up(x: float) -> float:
+    """保留 2 位小数，四舍五入（half-up）。"""
+    factor = 10 ** ROUND_DECIMALS
+    return math.floor(x * factor + 0.5) / factor
+
 
 # Step 3/6 顿号枚举单元保护（v1.1）：
 # 枚举结束判定的更高优先级标点（顿号之上）
@@ -380,7 +393,7 @@ class SubtitleSegmenter:
         subs: List[SubtitleBlock] = []
         t = 0.0
         for i, b in enumerate(blocks):
-            d = round(durs[i], 2)
+            d = _round2_half_up(durs[i])
             # 用舍入后的 duration 累加，保证区间严格连续（start_{i+1} = start_i + dur_i）
             subs.append(
                 SubtitleBlock(
@@ -391,5 +404,5 @@ class SubtitleSegmenter:
                     parent_segment_id=parent_id,
                 )
             )
-            t = round(t + d, 2)
+            t = _round2_half_up(t + d)
         return subs

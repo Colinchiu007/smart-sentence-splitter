@@ -15,9 +15,13 @@
 
 本文件是 splitter（Python）实现的一致性护栏；Multi-Publish（TypeScript）
 实现必须通过同一份向量（见其 story2video-engine 测试）。
+
+时间戳舍入：统一为四舍五入（half-up）保留 2 位小数，与 TypeScript `Math.round(x*100)/100`
+一致（Python 原生 round() 是银行家舍入，会在 .xx5 边界产生 0.01s 级分歧，禁止使用）。
 """
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -27,6 +31,11 @@ from splitter.scene_subtitle.subtitle_segmenter import SubtitleSegmenter
 
 VECTORS_PATH = Path(__file__).resolve().parent.parent / "vectors" / "subtitle_segmentation_vectors.json"
 DURATION = 10.0
+
+
+def _round2_half_up(x: float) -> float:
+    """四舍五入（half-up）保留 2 位小数——与实现/TS 语义一致。"""
+    return math.floor(x * 100 + 0.5) / 100
 
 
 def _load_vectors():
@@ -98,18 +107,18 @@ def test_vector_timestamps_contiguous(vector):
     assert subs[0].start_time == 0.0, f"向量 {vector['id']} 首块 start_time 非 0"
     # 每块 start_time/duration 均保持 2 位小数
     for s in subs:
-        assert s.start_time == round(s.start_time, 2), f"向量 {vector['id']} start_time 超过 2 位小数: {s.start_time}"
-        assert s.duration == round(s.duration, 2), f"向量 {vector['id']} duration 超过 2 位小数: {s.duration}"
+        assert s.start_time == _round2_half_up(s.start_time), f"向量 {vector['id']} start_time 超过 2 位小数: {s.start_time}"
+        assert s.duration == _round2_half_up(s.duration), f"向量 {vector['id']} duration 超过 2 位小数: {s.duration}"
         assert s.duration > 0, f"向量 {vector['id']} 存在非正 duration: {s.duration}"
     # 区间严格连续：start[i] == round(start[i-1] + dur[i-1], 2)
     for i in range(1, len(subs)):
-        expect = round(subs[i - 1].start_time + subs[i - 1].duration, 2)
+        expect = _round2_half_up(subs[i - 1].start_time + subs[i - 1].duration)
         assert subs[i].start_time == expect, (
             f"向量 {vector['id']} 块 {i} 时间戳不连续：start[{i}]={subs[i].start_time} "
             f"!= round(start[{i - 1}] + dur[{i - 1}], 2)={expect}"
         )
     # 总时长 ≈ DURATION（末块 end = start + dur）
-    end = round(subs[-1].start_time + subs[-1].duration, 2)
+    end = _round2_half_up(subs[-1].start_time + subs[-1].duration)
     assert end == pytest.approx(DURATION, abs=0.01 * len(subs) + 0.01)
     # display_order 连续
     assert [s.display_order for s in subs] == list(range(len(subs)))
@@ -123,7 +132,7 @@ def test_vector_timestamps_equal(vector):
         return
     assert subs[0].start_time == 0.0
     for i in range(1, len(subs)):
-        expect = round(subs[i - 1].start_time + subs[i - 1].duration, 2)
+        expect = _round2_half_up(subs[i - 1].start_time + subs[i - 1].duration)
         assert subs[i].start_time == expect, (
             f"向量 {vector['id']} 块 {i} 时间戳不连续（equal）：{subs[i].start_time} != {expect}"
         )

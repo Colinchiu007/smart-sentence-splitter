@@ -1,0 +1,262 @@
+[
+ {
+  "id": "vector_simple_single_block",
+  "text": "今天天气真好，我们去公园散步。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_punct_split_blocks",
+  "text": "今天天气真好，阳光洒在公园的长椅上，我们沿着小路散步。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_multi_sentence",
+  "text": "第一部分。第二部分，包含顿号、逗号、以及更多内容；第三部分？第四部分！",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_quotes_speech",
+  "text": "他说：“最近常来这里，清晨的空气最清新。”我点点头，继续往前走。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_quote_paired_in_block",
+  "text": "他说“你好”然后离开。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_book_title",
+  "text": "他推荐了《活着》这本书。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_no_punct_long",
+  "text": "这里有一串很长的句子没有任何标点一直延续下去直到超出最大长度限制才需要被强制切分成多个字幕块来展示",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_leading_punct",
+  "text": "，他笑了笑。然后继续说话。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_punct_only_tail",
+  "text": "走吧。，",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_short_sentence",
+  "text": "嗯。好的，就这么办。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_colon_semicolon",
+  "text": "一是早起；二是锻炼。三是读书。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_ellipsis",
+  "text": "他想了想……然后说。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_english",
+  "text": "Hello world. How are you? I am fine.",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_mixed_long_scene",
+  "text": "清晨的阳光洒在旧书桌上，一只银灰色小猫蜷在摊开的笔记本上打盹。窗外传来鸟鸣，几片梧桐叶随风飘进窗台。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_nested_quotes",
+  "text": "她喊道：“他说‘明天见’就走了。”",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_comma_list",
+  "text": "苹果、香蕉、橘子、葡萄和西瓜都是常见的水果，它们各有营养。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_balanced_split_long",
+  "text": "再配上八角桂皮黄酒等香料慢慢炖煮",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_balanced_user_case",
+  "text": "要知道在农耕社会，柴火、盐巴和香料那可都是绝对的硬通货。处理猪肠、牛肚这些下水，得反复搓洗焯水，再配上八角桂皮黄酒等香料慢慢炖煮。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_enumeration_whole",
+  "text": "要知道在农耕社会，柴火、盐巴和香料那可都是绝对的硬通货。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "probe_prop_1of16",
+  "text": "嗯。一二三四五六七八九十甲乙丙丁戊"
+ },
+ {
+  "id": "probe_prop_5of16",
+  "text": "一二三四五。一二三四五六七八九十甲。"
+ },
+ {
+  "id": "probe_prop_1of8",
+  "text": "嗯。一二三四五六七"
+ },
+ {
+  "id": "probe_prop_1of12",
+  "text": "嗯。一二三四五六七八九十甲乙"
+ },
+ {
+  "id": "probe_prop_1of24",
+  "text": "嗯。一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯"
+ },
+ {
+  "id": "probe_equal_16",
+  "text": "一二三四五六七八九十甲乙丙丁戊己。",
+  "config": {
+   "min_chars_per_block": 1,
+   "max_chars_per_block": 1,
+   "time_calculation_method": "equal"
+  }
+ },
+ {
+  "id": "probe_equal_8",
+  "text": "一二三四五六七八。",
+  "config": {
+   "min_chars_per_block": 1,
+   "max_chars_per_block": 1,
+   "time_calculation_method": "equal"
+  }
+ },
+ {
+  "id": "edge_long_no_punct_50",
+  "text": "这里有一串很长的句子没有任何标点一直延续下去直到超出最大长度限制才需要被强制切分成多个字幕块来展示更"
+ },
+ {
+  "id": "edge_enum_connector",
+  "text": "桌上摆着苹果、香蕉和梨子，它们都来自果园。"
+ },
+ {
+  "id": "edge_enum_predicate",
+  "text": "他说柴火、盐巴和香料那可都是硬通货"
+ },
+ {
+  "id": "edge_quotes_nested",
+  "text": "她喊道：“他说‘明天见’就走了。”"
+ },
+ {
+  "id": "edge_english_mixed",
+  "text": "abc中文def很长的一段话超过十五个字没有标点abcdefg"
+ },
+ {
+  "id": "edge_leading_punct",
+  "text": "，他笑了笑。然后继续说话。"
+ },
+ {
+  "id": "edge_ellipsis",
+  "text": "他想了想……然后说。"
+ },
+ {
+  "id": "edge_short_sentences",
+  "text": "嗯。好的，就这么办。走吧。"
+ },
+ {
+  "id": "edge_punct_only",
+  "text": "走吧。，"
+ },
+ {
+  "id": "probe_prop_3of16",
+  "text": "一二三。一二三四五六七八九十甲乙丙",
+  "note": "3/16*10=1.875 -> py 1.88? js 1.88"
+ },
+ {
+  "id": "probe_prop_7of16",
+  "text": "一二三四五六七。一二三四五六七八九十甲",
+  "note": "7/16*10=4.375"
+ },
+ {
+  "id": "probe_prop_1of32",
+  "text": "嗯。一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳",
+  "note": "1/32*10=0.3125"
+ }
+]
