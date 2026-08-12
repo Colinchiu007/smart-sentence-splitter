@@ -144,10 +144,15 @@ class SubtitleSegmenter:
         return [f for f in fragments if f.strip()]
 
     def _length_split(self, text: str) -> List[str]:
-        """Step 3：逐字符累积；优先级标点且 ≥min 即切；≥max 强制切（标点/空格/硬切）；配对引号保护。"""
+        """Step 3：逐字符累积；优先级标点且 ≥min 即切；≥max 强制切（标点/空格/硬切）；配对引号保护。
+
+        平衡约束（与 Step 6 一致）：无标点硬切后若尾块为 4..min-1 字（超出合法 ≤3 短尾），
+        从上一块让字给尾块（区间内优先标点），避免孤悬尾块（如 15+4 → 11+8）。
+        """
         blocks: List[str] = []
         cur = ""
         stack: List[str] = []
+        last_hard_cut = False  # 最近一次切分是否为无标点硬切
         for ch in text:
             cur += ch
             if ch in LEFT_QUOTES:
@@ -158,19 +163,36 @@ class SubtitleSegmenter:
             if is_punct and len(cur) >= self.min_chars:
                 blocks.append(cur)
                 cur = ""
+                last_hard_cut = False
             elif len(cur) >= self.max_chars and not stack:
                 pos = self._find_split_pos(cur)
                 if pos > 0:
                     blocks.append(cur[:pos])
                     cur = cur[pos:]
+                    last_hard_cut = False
                 else:
                     blocks.append(cur)
                     cur = ""
+                    last_hard_cut = True
             elif len(cur) >= self.max_chars * 2 and stack:
                 blocks.append(cur)
                 cur = ""
                 stack = []
+                last_hard_cut = True
         if cur:
+            # 平衡约束：硬切后的尾块清理后为 4..min-1 字（非合法 ≤3 短尾）时，从上一块让字给尾块
+            # （用清理后长度判断，避免把 "上打盹。"（清理后 3 字，合法短尾）误判为需要平衡）
+            tail_clean = cur.strip().rstrip("".join(TRAILING_PUNCT))
+            if last_hard_cut and blocks and 3 < len(tail_clean) < self.min_chars and len(blocks[-1]) >= self.min_chars:
+                prev = blocks[-1]
+                need = self.min_chars - len(tail_clean)
+                lo = max(1, len(prev) - need)
+                hi = len(prev) - 1
+                pos = self._find_split_pos_in_range(prev, lo, hi)
+                if pos <= 0:
+                    pos = lo
+                blocks[-1] = prev[:pos]
+                cur = prev[pos:] + cur
             blocks.append(cur)
         return [b for b in blocks if b.strip()]
 
