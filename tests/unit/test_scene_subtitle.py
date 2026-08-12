@@ -340,3 +340,26 @@ class TestEnumerationProtection:
         assert all(len(b) <= 15 for b in blocks)
         assert blocks[0] == "清单里有苹果、香蕉"
         assert blocks[-1] == "这些都是常见的水果"
+
+
+class TestRoundingHalfUp:
+    """时间戳四舍五入（half-up）与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）。
+
+    Python round() 为银行家舍入（0.625→0.62），JS 为四舍五入（0.625→0.63）——
+    差分测试证实两实现会在 .xx5 边界产生 0.01s 级分歧（等分场景累计 0.15s），本测试锁定统一为 half-up。
+    """
+
+    def test_proportional_xx5_rounding(self):
+        # 1/16*10=0.625 → 0.63；15/16*10=9.375 → 9.38（half-up）
+        seg = SubtitleSegmenter({})
+        subs = seg.segment(make_scene("嗯。一二三四五六七八九十甲乙丙丁戊", duration=10.0))
+        assert [s.duration for s in subs] == [0.63, 9.38]
+        assert [s.start_time for s in subs] == [0.0, 0.63]
+
+    def test_equal_xx5_rounding(self):
+        # 16 块等分：10/16=0.625 → 每块 0.63，末块 start 累计到 9.45（与 TS 一致）
+        seg = SubtitleSegmenter({"min_chars_per_block": 1, "max_chars_per_block": 1, "time_calculation_method": "equal"})
+        text = "一二三四五六七八九十甲乙丙丁戊己。"
+        subs = seg.segment(make_scene(text, duration=10.0))
+        assert [s.duration for s in subs] == [0.63] * 16
+        assert subs[-1].start_time == 9.45
