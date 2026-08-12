@@ -301,3 +301,42 @@ class TestSeparatorSceneFilter:
         all_text = "".join(s.text for s in result.scenes)
         assert "***" not in all_text
         assert "===" not in all_text
+
+
+class TestEnumerationProtection:
+    """v1.1 顿号枚举单元整体保护：max 切分锚点落在顿号上时，切分点移到枚举单元结束之后。"""
+
+    def _blocks(self, text, min_chars=8, max_chars=15):
+        seg = SubtitleSegmenter({"min_chars_per_block": min_chars, "max_chars_per_block": max_chars})
+        return [s.text for s in seg.segment(make_scene(text))]
+
+    def test_enumeration_kept_whole(self):
+        # 用户实例：切分点原落在"柴火、"的顿号上，应移到谓词引导词"那"之前，枚举整体保留
+        assert self._blocks("要知道在农耕社会，柴火、盐巴和香料那可都是绝对的硬通货。") == [
+            "要知道在农耕社会",
+            "柴火、盐巴和香料",
+            "那可都是绝对的硬通货",
+        ]
+
+    def test_enumeration_with_connector(self):
+        # 和/及/与 连接的末项属于枚举单元
+        assert self._blocks("桌上摆着苹果、香蕉和梨子，它们都来自果园。") == [
+            "桌上摆着苹果、香蕉和梨子",
+            "它们都来自果园",
+        ]
+
+    def test_enumeration_not_split_by_step3_punct_cut(self):
+        # 顿号不再作为 Step 3 常规切分锚点（优先级最低），逗号/句号仍是
+        assert self._blocks("苹果、香蕉、橘子、葡萄和西瓜都是常见的水果，它们各有营养。") == [
+            "苹果、香蕉、橘子",
+            "葡萄和西瓜都是常见的水果",
+            "它们各有营养",
+        ]
+
+    def test_enumeration_long_splits_at_punct(self):
+        # 长枚举按顿号/枚举整体逐步切分：不产生超长块；切点处的顿号按 Step 5 清理
+        text = "清单里有苹果、香蕉、橘子、葡萄、西瓜和哈密瓜这些都是常见的水果。"
+        blocks = self._blocks(text)
+        assert all(len(b) <= 15 for b in blocks)
+        assert blocks[0] == "清单里有苹果、香蕉"
+        assert blocks[-1] == "这些都是常见的水果"
