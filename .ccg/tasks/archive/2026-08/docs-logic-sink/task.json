@@ -1,0 +1,12 @@
+{
+  "id": "docs-logic-sink",
+  "title": "历轮对话分句逻辑文档沉淀审计与补齐",
+  "status": "completed",
+  "complexity": "M",
+  "risk": "low",
+  "domain": "docs",
+  "currentPhase": "completed",
+  "nextAction": "已归档",
+  "createdAt": "2026-08-14T10:00:00Z",
+  "branch": "main"
+}

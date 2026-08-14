@@ -90,6 +90,52 @@
 | `tests/vectors/subtitle_segmentation_vectors.json` | 新增 — 共享测试向量（16 例） |
 | `tests/unit/test_subtitle_vectors.py` | 新增 — 向量断言测试（32 例） |
 | `tests/unit/test_scene_subtitle.py` | 更新 — 对齐规范行为断言 |
+## [0.13.0] - 2026-07-13
+
+### 🔧 v0.13.0 — 场景层/句子层规则修复（历轮对话沉淀）
+
+#### S1: 换行作 EOS 边界 (languages/zh/splitter.py)
+
+- `EOS_CHARS` 新增 `\n`：标题行与正文、短行叙述正确分离
+- 修复：无终止标点的换行段落被合并为一句的问题
+
+#### S2: 标题行无终止符自动补句号 (scene_segmenter.py)
+
+- `SceneSegmenter._create_scene` 拼接多句时，若前句无终止标点且后句非空，自动补 `。` 避免粘连
+- 效果：场景合并质量提升（示例 57→30、~87→44 场景）
+
+#### S3: 场景溢出控制 (scene_segmenter.py)
+
+- 新增 `allow_single_sentence_overflow`（默认 True）：当前场景仅 1 句时允许继续追加句子，避免"几乎一句一场景"的碎片化
+
+#### S4: 短尾合并阈值修正 (length_segmenter.py)
+
+- `_resplit` 短尾合并阈值由 `<= 4` 改为 `< min_chars`（默认 8）
+- 修复：配对引号保护分出的 4 字尾块被错误合并的问题
+
+#### S5: 字幕短尾合并 (subtitle_segmenter.py)
+
+- `_merge_short` 新增 `is_short_tail` 规则：≤3 字短尾合并到前一块（且前块 ≥ min_chars）
+
+#### S6: 引号闭合处 EOS (languages/zh/splitter.py + languages/en/splitter.py)
+
+- `_protect_quoted` 剥离引文尾部句末标点保留在占位符外，让 EOS 检测可见
+- 修复：引号闭合处（`。”`）无法分句的问题
+
+#### S7: TextTiling 属性名统一
+
+- `window_size` → `sentence_window` 属性名修复（与配置键一致），内部方法与测试同步
+
+#### S8: 分隔线过滤 (pipeline.py + postprocessor.py)
+
+- `_is_separator_line` 过滤纯分隔线段落（`---` / `***` / `===`），避免生成无意义场景
+- `SeparatorLineProcessor` 后处理器冗余兜底；修复 postprocessor.py import 顺序（`from __future__` 置顶）
+
+#### 验证
+
+- 285 unit tests passing（修复前 9 个失败：texttiling + large_text + mcp_server 均为预存问题）
+- docs/PRD.md 补充「两维度理解：精度栈 × 产出栈」章节
+
 ## [0.12.1] - 2026-08-11
 
 ### ✨ feat(api): /v1/split 场景层透传字幕层（subtitles[]）
