@@ -1,4 +1,4 @@
-"""Subtitle segmenter (Layer 3) — 对齐《字幕分割规范 v1.1》。
+"""Subtitle segmenter (Layer 3) — 对齐《字幕分割规范 v1.2》。
 
 见 docs/subtitle-segmentation-spec.md（双实现共享：smart-sentence-splitter Python
 与 Multi-Publish story2video-engine TypeScript 输出同一字幕块序列）。
@@ -63,6 +63,13 @@ QUOTE_MAP = dict(QUOTE_PAIRS)
 # 背景：Python round() 为银行家舍入（0.625→0.62），JS 为四舍五入（0.625→0.63），差分测试证实
 # 两实现会在 .xx5 边界产生 0.01s 级分歧（等分场景累计 0.15s），故统一为 half-up。
 ROUND_DECIMALS = int(_RULES["rounding"]["decimal_places"])
+
+# Step 3/6 词边界感知切分（v1.2）：无标点硬切/平衡切分时优先在不劈词的位置切分。
+# 切点判定 = 块首为连词/介词（引导短语）或块尾为助词/副词/句内标点（收束）；
+# 块首为强黏着后缀时排除（避免 "扶余|国"、"电|视剧" 类劈词）。
+WORD_GOOD_LEAD = set(_RULES["word_split"]["good_lead"])
+WORD_GOOD_TAIL = set(_RULES["word_split"]["good_tail"])
+WORD_BAD_FOLLOWERS = set(_RULES["word_split"]["bad_followers"])
 
 
 def _round2_half_up(x: float) -> float:
@@ -188,8 +195,13 @@ class SubtitleSegmenter:
                     cur = cur[pos:]
                     last_hard_cut = False
                 else:
-                    blocks.append(cur)
-                    cur = ""
+                    # v1.2 词边界感知：无标点硬切时优先不劈词（区间内找好切点/非黏着切点）
+                    ws = self._word_safe_split(
+                        cur, max(1, len(cur) - self.max_chars - 1), len(cur) - 1, min_head=self.min_chars
+                    )
+                    pos = ws if ws > 0 else len(cur)
+                    blocks.append(cur[:pos])
+                    cur = cur[pos:]
                     last_hard_cut = True
             elif len(cur) >= self.max_chars * 2 and stack:
                 blocks.append(cur)
@@ -231,18 +243,61 @@ class SubtitleSegmenter:
                 return i + 1
         return -1
 
+    @staticmethod
+    def _clean_len(text: str) -> int:
+        """剥离尾部标点后的长度（Step 4 短块判定用，v1.2）。"""
+        return len(text.strip().rstrip("".join(TRAILING_PUNCT)))
+
+    @staticmethod
+    def _is_good_cut(text: str, i: int) -> bool:
+        """词边界好切点：切点后为连词/介词（块首引导），或切点前为助词/副词/句内标点（块尾收束）。"""
+        if i >= len(text):
+            return False
+        return text[i] in WORD_GOOD_LEAD or (i > 0 and text[i - 1] in WORD_GOOD_TAIL)
+
+    @classmethod
+    def _word_safe_split(cls, text: str, lo: int, hi: int, min_head: int = 1) -> int:
+        """在 [lo, hi] 内找不劈词的切点索引；-1 表示无（v1.2）。
+
+        策略（优先级）：
+        - 好切点从后往前找（头块尽量长），排除孤悬 ≤3 字短尾；
+        - 非黏着后缀切点从前往后找，要求头块 >= min_head（防过度前移劈出过短头块，
+          如 "一只银灰色小猫蜷在|摊开的笔记本" 不切 "一|只银灰…"）；
+        - 无则 -1，回退算术/标点切分。
+        """
+        for i in range(hi, lo - 1, -1):
+            if cls._is_good_cut(text, i) and len(text) - i > 3:
+                return i
+        for i in range(max(lo, min_head), hi + 1):
+            if i < len(text) and text[i] not in WORD_BAD_FOLLOWERS:
+                return i
+        return -1
+
     def _merge_short(self, blocks: List[str]) -> List[str]:
-        """Step 4：前块 <min 合并；纯标点短块（≤2）并入前块；短尾（≤3 且前块 ≥min）并入前块。"""
+        """Step 4：短块合并（v1.2 修复机制三 + 防过度并入）。
+
+        - 判定统一使用 clean 后长度（剥离尾部标点），避免 Step 5 剥标点后块变短无法补救；
+        - 并入条件：合并后长度 <= max_chars，否则保持独立短块（由 short_block_exceptions 声明）；
+        - 句界结尾（。！？…）的块是完整句，不并入前块。
+        """
         if not blocks:
             return blocks
         merged = [blocks[0]]
         for b in blocks[1:]:
             b_stripped = b.strip()
+            b_clean_len = self._clean_len(b)
+            prev_clean_len = self._clean_len(merged[-1])
             is_punct_tail = len(b_stripped) <= 2 and all(
                 c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b_stripped
             )
-            is_short_tail = len(b_stripped) <= 3 and len(merged[-1]) >= self.min_chars
-            if len(merged[-1]) < self.min_chars or is_punct_tail or is_short_tail:
+            is_short_tail = b_clean_len <= 3 and prev_clean_len >= self.min_chars
+            is_sentence_end = bool(b_stripped) and b_stripped[-1] in SENTENCE_BOUNDARY and b_clean_len > 3
+            merged_len = prev_clean_len + b_clean_len
+            if is_sentence_end:
+                merged.append(b)
+            elif (
+                prev_clean_len < self.min_chars or is_punct_tail or is_short_tail or b_clean_len < self.min_chars
+            ) and merged_len <= self.max_chars:
                 merged[-1] = merged[-1] + b
             else:
                 merged.append(b)
@@ -322,11 +377,17 @@ class SubtitleSegmenter:
                 pos = self._apply_enumeration_shift(b, self._find_split_pos(b))
                 if pos <= 0 or pos >= len(b):
                     pos = self.max_chars
-                # 平衡约束：尾块 < min_chars 时前移切分点
+                # 平衡约束：尾块 < min_chars 时前移切分点（v1.2：词边界感知 + 越界修复）
                 if len(b) - pos < self.min_chars:
                     min_pos = max(1, len(b) - self.min_chars)
-                    balanced = self._find_split_pos_in_range(b, min_pos, len(b) - 1)
-                    pos = balanced if balanced > 0 else min_pos
+                    hi = len(b) - 1
+                    ws = self._word_safe_split(b, min_pos, hi, min_head=min_pos)
+                    if ws > 0 and ws < len(b):
+                        pos = ws
+                    else:
+                        # 越界修复：balanced == len(b)（尾字符恰为标点时 i+1 越界）视为无效
+                        balanced = self._find_split_pos_in_range(b, min_pos, hi)
+                        pos = balanced if 0 < balanced < len(b) else min_pos
                 out.append(b[:pos])
                 b = b[pos:]
             if b:

@@ -147,14 +147,18 @@ class TestSubtitleCleanUp:
             )
 
     def test_merge_short_with_quotes(self):
-        """纯引号短块应被合并（场景 10 问题）。"""
+        """纯引号尾块并入遵循 v1.2 长度守卫（场景 10 问题回归）。"""
         seg = self._make_seg()
-        # 模拟 _merge_short 输入：一个纯引号块
-        blocks = ["他们开始行动。一开始装得彬彬有礼", '"']
+        # 并入后 ≤ max：正常并入
+        blocks = ["短文本", '"']
         merged = seg._merge_short(blocks)
-        # 纯引号块应被合并到前一块
         assert len(merged) == 1
-        assert '"' in merged[0] or "\u201c" in merged[0] or merged[0].endswith("礼")
+        assert '"' in merged[0]
+        # 并入后 > max：保持独立（交由 Step 5 引号清理，流水线不产出孤立纯引号块）
+        blocks2 = ["他们开始行动。一开始装得彬彬有礼", '"']
+        merged2 = seg._merge_short(blocks2)
+        assert len(merged2) == 2
+        assert merged2[1] == '"'
 
 
 class TestLengthSegmenterExtended:
@@ -260,6 +264,15 @@ class TestEnforceMaxLength:
         blocks = ["这是一段很长的文本超过了十五个字符的限制"]
         result = seg._enforce_max(blocks)
         assert all(len(b) <= 15 for b in result)
+
+    def test_enforce_max_balance_fallback_no_good_cut(self):
+        """v1.2 回归：Step 6 平衡回退——切分窗口内无标点/无词边界好切点（尾字全为强黏着后缀）时，
+        回退 balanced=min_pos 切分（10+8），不得因漏算 balanced 抛 NameError。
+        """
+        seg = SubtitleSegmenter()
+        blocks = ["软件硬件网络设备端口接口模块组件服务"]
+        result = seg._enforce_max(blocks)
+        assert result == ["软件硬件网络设备端口", "接口模块组件服务"]
 
     def test_short_block_unchanged(self):
         """不超过 max_chars 的块不受影响。"""
