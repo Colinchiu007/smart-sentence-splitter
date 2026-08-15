@@ -1,3 +1,40 @@
+## [0.16.0] - 2026-08-15
+
+### 🐛 fix(subtitle): 词边界感知切分（v1.2，修复扶余|国/电|视剧/复|杂 等坏切）
+
+- **根因（用户坏例三机制）**：
+  1. Step 6 `_enforce_max` 平衡兜底按算术位置切（`min_pos = len-min`），无词边界感知 → `扶余|国`、`电|视剧`；
+  2. Step 3 `_length_split` 无标点硬切整块，不检查劈词 → `复|杂`、`空|白一片`；
+  3. Step 4 `_merge_short` 用含标点长度判定短块，clean 后变短无法补救 → `卵生、日影受孕` 7 字孤悬；
+  4. 配套：Multi-Publish stage-executor 未把 `subtitle_min_chars/subtitle_max_chars/subtitle_timing`
+     透传到 8002 `config.subtitle`（另仓修复）。
+- **修复**：
+  - 新增 `subtitle_rules.json` `word_split` 节（`good_lead`/`good_tail`/`bad_followers`，规则表单源）；
+  - `_word_safe_split`/`_is_good_cut`/`_clean_len`：好切点从后往前（排除孤悬 ≤3 尾）→ 非黏着从前往后
+    （头块 ≥min）→ 回退算术；S3 硬切、S6 平衡切分均接入；
+  - S4 判定改 clean 后长度 + 并入后 ≤max + 句界完整句（clean 后 >3 字）不并入；
+  - S6 平衡切分越界修复（`balanced == len(b)` 视为无效）；
+  - 允许语义完整短块（`和扶余人的记载` 7 字等）以 `short_block_exceptions` 显式声明，优先不劈词。
+- **向量**：新增 5 条用户坏例（`user_myth_overtones`/`user_buyeo_kingdom`/`user_jumong_drama`/
+  `user_blank_plain`/`user_complex_simplify`）；更新 4 条既有向量真值（`no_punct_long`/`english`/
+  `mixed_long_scene`/`user_blank_plain`，均因不劈词更优）；`short_block_exceptions` 同步维护。
+- **验证**：splitter 全量 100 passed（向量子集 25×4 断言）；Multi-Publish TS 145 / JS parity 21 /
+  JS 向量 51 / stage-executor 66 / E2E real 8002 5 段坏例全绿；spec 升级 v1.2（§3/§4/§6/§7）。
+
+### 🔧 fix(subtitle): 顿号枚举吞并谓语守卫（v1.2.1，修复 滚|烫 劈词孤尾）
+
+- **现象**：`枪声、爆炸声、呐喊声混成一锅滚烫的粥。`（19 字，max=15）切成
+  `枪声、爆炸声、呐喊声混成一锅滚`(15) + `烫的粥`(3)——`滚烫` 被劈开、3 字孤尾。
+- **根因**：Step 3 强制切锚点落在顿号上时，`_enumeration_end` 把「枚举末项 + 谓语」
+  （`呐喊声混成一锅滚`）整段当作枚举单元吞并（`混` 不在谓词引导词集合，无终止标点），
+  切点被推到块尾。
+- **修复**：`predicate_starters` 增加 `混`（高频「名词枚举 + 混成/混入/混为」模式）；
+  新增**吞并守卫**（三端同步）——枚举单元扫到片段尾仍无终止、且内部无更多顿号项时，
+  判定过度吞并，枚举保护回退顿号锚点（不依赖词表，兜底未知谓语动词）。
+- **向量**：新增 `user_sounds_mixed`（`枪声、爆炸声、呐喊声` + `混成一锅滚烫的粥`，10+8）。
+- **验证**：splitter 420 passed（向量 26 条）；Multi-Publish TS 148 / JS 160 / E2E real 8002
+  6 段用户坏例全绿；spec 补 §5 吞并守卫说明。
+
 ## [0.15.2] - 2026-08-12
 
 ### ♻️ refactor(subtitle): 规则表单源（subtitle-rules.json，双实现共享）

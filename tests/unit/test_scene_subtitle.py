@@ -147,14 +147,18 @@ class TestSubtitleCleanUp:
             )
 
     def test_merge_short_with_quotes(self):
-        """纯引号短块应被合并（场景 10 问题）。"""
+        """纯引号尾块并入遵循 v1.2 长度守卫（场景 10 问题回归）。"""
         seg = self._make_seg()
-        # 模拟 _merge_short 输入：一个纯引号块
-        blocks = ["他们开始行动。一开始装得彬彬有礼", '"']
+        # 并入后 ≤ max：正常并入
+        blocks = ["短文本", '"']
         merged = seg._merge_short(blocks)
-        # 纯引号块应被合并到前一块
         assert len(merged) == 1
-        assert '"' in merged[0] or "\u201c" in merged[0] or merged[0].endswith("礼")
+        assert '"' in merged[0]
+        # 并入后 > max：保持独立（交由 Step 5 引号清理，流水线不产出孤立纯引号块）
+        blocks2 = ["他们开始行动。一开始装得彬彬有礼", '"']
+        merged2 = seg._merge_short(blocks2)
+        assert len(merged2) == 2
+        assert merged2[1] == '"'
 
 
 class TestLengthSegmenterExtended:
@@ -261,6 +265,15 @@ class TestEnforceMaxLength:
         result = seg._enforce_max(blocks)
         assert all(len(b) <= 15 for b in result)
 
+    def test_enforce_max_balance_fallback_no_good_cut(self):
+        """v1.2 回归：Step 6 平衡回退——切分窗口内无标点/无词边界好切点（尾字全为强黏着后缀）时，
+        回退 balanced=min_pos 切分（10+8），不得因漏算 balanced 抛 NameError。
+        """
+        seg = SubtitleSegmenter()
+        blocks = ["软件硬件网络设备端口接口模块组件服务"]
+        result = seg._enforce_max(blocks)
+        assert result == ["软件硬件网络设备端口", "接口模块组件服务"]
+
     def test_short_block_unchanged(self):
         """不超过 max_chars 的块不受影响。"""
         seg = SubtitleSegmenter()
@@ -341,6 +354,21 @@ class TestEnumerationProtection:
         assert blocks[0] == "清单里有苹果、香蕉"
         assert blocks[-1] == "这些都是常见的水果"
 
+    def test_enumeration_predicate_swallow_guard(self):
+        # v1.2.1 吞并守卫：枚举项+谓语被 max 截断时，枚举保护不得吞并谓语整段
+        # （否则 15+3 劈词孤尾：`呐喊声混成一锅滚` + `烫的粥`）
+        assert self._blocks("枪声、爆炸声、呐喊声混成一锅滚烫的粥。") == [
+            "枪声、爆炸声、呐喊声",
+            "混成一锅滚烫的粥",
+        ]
+
+    def test_enumeration_predicate_unknown_verb_still_no_swallow(self):
+        # 未知谓语动词（不在 predicate_starters，如"此起彼伏"）也受守卫保护：
+        # 回退顿号锚点而非吞并到块尾；短头块并入超限时保持分开（v1.2 长度守卫），
+        # 禁止出现 15+3 劈词孤尾
+        blocks = self._blocks("风声、雨声、读书声此起彼伏地回荡在廊檐下。")
+        assert blocks == ["风声、雨声", "读书声此起彼伏地回荡在廊檐下"]
+
 
 class TestRoundingHalfUp:
     """时间戳四舍五入（half-up）与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）。
@@ -363,3 +391,59 @@ class TestRoundingHalfUp:
         subs = seg.segment(make_scene(text, duration=10.0))
         assert [s.duration for s in subs] == [0.63] * 16
         assert subs[-1].start_time == 9.45
+
+class TestSubtitleV123WordAwareRegression:
+    """v1.2.2/v1.2.3 回归：成词保护（no_cut_bigrams）、小数点豁免、good_tail_blockers、孤悬尾防护。
+
+    覆盖用户实测投诉与验收样例：扶余国/电视剧/复杂/辽西/城邦/脖子/挥刀自宫 4 块期望、
+    713.3 小数不劈、"能够/就是/做成/高高在上" 等成词不劈。
+    """
+
+    def _blocks(self, text: str) -> list:
+        return SubtitleSegmenter({})._split_to_blocks(text)
+
+    def test_no_cut_bigrams_word_intact(self):
+        # 能|够、就|是、做|成、在|上 均不得被切开
+        assert any("能够" in b for b in self._blocks("这套AI基建能够实时监控全域低空空域，为每一架无人机动态规划专属航线，自动避开高楼、人群、禁飞区。"))
+        assert any("就是" in b for b in self._blocks("很多人以为低空经济就是造架无人机飞一飞，太天真了。"))
+        assert any("做成" in b for b in self._blocks("于是深圳干了一件全世界都没干成的事：把AI空域调度做成城市标配基建。"))
+        assert any("高高在上" in b for b in self._blocks("他们觉得自己是高高在上的现代国家，把文化和国家认同搅在一起，是落后操作。"))
+
+    def test_user_complaint_words_intact(self):
+        # 用户投诉：扶余国 / 电视剧 / 复杂 / 辽西以东 不再被硬切
+        assert any("扶余国" in b for b in self._blocks("因此，在韩国的历史教科书里，能看到大量关于扶余国和扶余人的记载。"))
+        assert any("电视剧" in b for b in self._blocks("2005年，韩国收视率最高的电视剧《朱蒙》播出，里面讲述的正是这位扶余王子的故事。"))
+        assert any("复杂简单化" in b for b in self._blocks("历史上的族群迁徙与政权更迭本就复杂，而民族叙事则倾向于把一切复杂简单化、直线化。"))
+        assert any("辽西以东的虚实" in b for b in self._blocks("西周人对东北的了解本就模糊，连分封在河北的燕国早期历史都空白一片，更不要说辽西以东的虚实。"))
+
+    def test_user_acceptance_4_blocks(self):
+        # 用户明确期望：挥刀自宫句切成 4 块
+        assert self._blocks("这套政策根本经不起扒，说白了就是逼着全体华人为了挤进西方圈子，挥刀自宫搞文化阉割。") == [
+            "这套政策根本经不起扒",
+            "说白了就是逼着全体华人",
+            "为了挤进西方圈子",
+            "挥刀自宫搞文化阉割",
+        ]
+
+    def test_wendi_sentence_3_blocks(self):
+        assert self._blocks("要理解文帝进京这件事，得先搞清楚一个前提：功臣集团为什么选他？") == [
+            "要理解文帝进京这件事",
+            "得先搞清楚一个前提：",
+            "功臣集团为什么选他",
+        ]
+
+    def test_decimal_dot_not_split(self):
+        # 713.3 的小数点不是句界/切分锚点
+        blocks = self._blocks("今年夏天，台风肆虐导致广西暴雨如注，降雨量狂飙到一天713.3毫米。")
+        assert any(b == "713.3毫米" for b in blocks)
+        assert all("713" not in b or "713.3" in b for b in blocks)
+
+    def test_good_tail_blocker_personality(self):
+        # good_tail 入 "个" 后，"个性" 不得被切（good_tail_blockers 兜底）
+        blocks = self._blocks("他们越来越强调个性独立，不愿再被贴上标签。")
+        assert any("个性" in b for b in blocks)
+
+    def test_enumeration_and_neck(self):
+        blocks = self._blocks("枪声、爆炸声、呐喊声混成一锅滚烫的粥。")
+        assert blocks[0] == "枪声、爆炸声、呐喊声"
+        assert any("被掐着脖子" in b for b in self._blocks("说到底，新加坡华人也不想被掐着脖子不让说方言，也不想硬演一家亲，也怀疑政府在偷偷引进印度人。"))
