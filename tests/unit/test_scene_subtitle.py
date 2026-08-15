@@ -354,6 +354,21 @@ class TestEnumerationProtection:
         assert blocks[0] == "清单里有苹果、香蕉"
         assert blocks[-1] == "这些都是常见的水果"
 
+    def test_enumeration_predicate_swallow_guard(self):
+        # v1.2.1 吞并守卫：枚举项+谓语被 max 截断时，枚举保护不得吞并谓语整段
+        # （否则 15+3 劈词孤尾：`呐喊声混成一锅滚` + `烫的粥`）
+        assert self._blocks("枪声、爆炸声、呐喊声混成一锅滚烫的粥。") == [
+            "枪声、爆炸声、呐喊声",
+            "混成一锅滚烫的粥",
+        ]
+
+    def test_enumeration_predicate_unknown_verb_still_no_swallow(self):
+        # 未知谓语动词（不在 predicate_starters，如"此起彼伏"）也受守卫保护：
+        # 回退顿号锚点而非吞并到块尾；短头块并入超限时保持分开（v1.2 长度守卫），
+        # 禁止出现 15+3 劈词孤尾
+        blocks = self._blocks("风声、雨声、读书声此起彼伏地回荡在廊檐下。")
+        assert blocks == ["风声、雨声", "读书声此起彼伏地回荡在廊檐下"]
+
 
 class TestRoundingHalfUp:
     """时间戳四舍五入（half-up）与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）。

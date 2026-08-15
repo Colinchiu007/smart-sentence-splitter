@@ -421,6 +421,10 @@ class SubtitleSegmenter:
         if pos <= 0 or pos >= len(text) or text[pos - 1] != "、":
             return pos
         eend = self._enumeration_end(text, pos)
+        # v1.2.1 守卫：枚举单元扫到块尾仍无终止、且内部无更多顿号项时，疑似把谓语吞进
+        # 枚举末项（如 "呐喊声混成一锅滚" 被整段吞并 → 15+3 劈词孤尾），不吞并回退锚点。
+        if eend == len(text) and "、" not in text[pos:eend]:
+            return pos
         if eend > pos and eend <= self.max_chars:
             if not require_tail_min or len(text) - eend >= self.min_chars:
                 return eend
