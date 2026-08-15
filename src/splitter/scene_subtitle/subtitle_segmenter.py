@@ -291,11 +291,7 @@ class SubtitleSegmenter:
             return False
         if text[i] in WORD_GOOD_LEAD:
             return True
-        return (
-            i > 0
-            and text[i - 1] in WORD_GOOD_TAIL
-            and text[i] not in WORD_GOOD_TAIL_BLOCKERS
-        )
+        return i > 0 and text[i - 1] in WORD_GOOD_TAIL and text[i] not in WORD_GOOD_TAIL_BLOCKERS
 
     @classmethod
     def _word_safe_split(cls, text: str, lo: int, hi: int, min_head: int = 1, tail_min: int = 0) -> int:
@@ -317,16 +313,12 @@ class SubtitleSegmenter:
                 continue
             if not cls._is_good_cut(text, i):
                 continue
-            if tail > 3 and (
-                tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD
-            ):
+            if tail > 3 and (tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD):
                 return i
             # v1.2.3 孤悬尾防护（仅 tail==4 且块首非连词/介词）："着|脖" 劈 "脖子" → 前移找 tail 达标点
             # （"新加坡华人也不想|被掐着…" tail=8）；找不到再回退。
             # "人|为"（为∈good_lead 引导短语）、"个|西"（tail=6）、"能|多"（tail=7）直接接受，不误伤。
-            if fallback < 0 and tail == 4 and text[i] not in WORD_GOOD_LEAD and (
-                i == 0 or not text[i - 1].isdigit()
-            ):
+            if fallback < 0 and tail == 4 and text[i] not in WORD_GOOD_LEAD and (i == 0 or not text[i - 1].isdigit()):
                 fallback = i
         if fallback >= 0:
             return fallback
