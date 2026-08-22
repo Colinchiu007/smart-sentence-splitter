@@ -58,6 +58,7 @@ QUOTE_PAIRS = [tuple(pair) for pair in _RULES["quote_pairs"]]
 LEFT_QUOTES = {p[0] for p in QUOTE_PAIRS}
 RIGHT_QUOTES = {p[1] for p in QUOTE_PAIRS}
 QUOTE_MAP = dict(QUOTE_PAIRS)
+SYMMETRIC_QUOTES = {quote for quote in LEFT_QUOTES & RIGHT_QUOTES if QUOTE_MAP.get(quote) == quote}
 
 # 时间戳保留 2 位小数：四舍五入（half-up）——与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）
 # 背景：Python round() 为银行家舍入（0.625→0.62），JS 为四舍五入（0.625→0.63），差分测试证实
@@ -68,6 +69,8 @@ ROUND_DECIMALS = int(_RULES["rounding"]["decimal_places"])
 # 切点判定 = 块首为连词/介词（引导短语）或块尾为助词/副词/句内标点（收束）；
 # 块首为强黏着后缀时排除（避免 "扶余|国"、"电|视剧" 类劈词）。
 WORD_GOOD_LEAD = set(_RULES["word_split"]["good_lead"])
+WORD_SEMANTIC_LEAD = set(_RULES["word_split"].get("semantic_lead", ""))
+WORD_SEMANTIC_LEAD_FOLLOWERS = _RULES["word_split"].get("semantic_lead_followers", {})
 WORD_GOOD_TAIL = set(_RULES["word_split"]["good_tail"])
 WORD_BAD_FOLLOWERS = set(_RULES["word_split"]["bad_followers"])
 # v1.2.2：good_tail 路径的块首排除集（仅纯黏着后缀，如 "个|性" 的 性）。
@@ -77,6 +80,14 @@ WORD_GOOD_TAIL_BLOCKERS = set(_RULES["word_split"].get("good_tail_blockers", "")
 # v1.2.3：成词保护（兼容字段名 no_cut_bigrams）——项目可以是任意长度短语，
 # 切点不得落在任一短语内部（如 "蒙古"、"江南"、"包税人"）。
 WORD_NO_CUT_PHRASES = set(_RULES["word_split"].get("no_cut_bigrams", []))
+
+
+def _is_semantic_lead_at(text: str, index: int) -> bool:
+    """语义引导字必须满足自身的词组后续约束（如“提”只在“提前”中生效）。"""
+    if index < 0 or index >= len(text) or text[index] not in WORD_SEMANTIC_LEAD:
+        return False
+    allowed_followers = WORD_SEMANTIC_LEAD_FOLLOWERS.get(text[index])
+    return allowed_followers is None or (index + 1 < len(text) and text[index + 1] in allowed_followers)
 
 
 def _round2_half_up(x: float) -> float:
@@ -143,7 +154,9 @@ class SubtitleSegmenter:
         stack: List[str] = []
         for ch in text:
             cur += ch
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and stack[-1] == ch:
+                stack.pop()
+            elif ch in LEFT_QUOTES:
                 stack.append(ch)
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
                 stack.pop()
@@ -166,7 +179,14 @@ class SubtitleSegmenter:
         cur = ""
         stack: List[tuple] = []  # (quote_char, content_start_index_in_cur)
         for ch in text:
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and stack[-1][0] == ch:
+                _, start = stack.pop()
+                content_len = len(cur) - start - 1
+                cur += ch
+                if not stack and content_len >= self.min_chars:
+                    fragments.append(cur)
+                    cur = ""
+            elif ch in LEFT_QUOTES:
                 stack.append((ch, len(cur)))
                 cur += ch
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1][0]) == ch:
@@ -194,7 +214,9 @@ class SubtitleSegmenter:
         last_hard_cut = False  # 最近一次切分是否为无标点硬切
         for ch in text:
             cur += ch
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and stack[-1] == ch:
+                stack.pop()
+            elif ch in LEFT_QUOTES:
                 stack.append(ch)
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
                 stack.pop()
@@ -235,7 +257,14 @@ class SubtitleSegmenter:
             # 平衡约束：硬切后的尾块清理后为 4..min-1 字（非合法 ≤3 短尾）时，从上一块让字给尾块
             # （用清理后长度判断，避免把 "上打盹。"（清理后 3 字，合法短尾）误判为需要平衡）
             tail_clean = cur.strip().rstrip("".join(TRAILING_PUNCT))
-            if last_hard_cut and blocks and 3 < len(tail_clean) < self.min_chars and len(blocks[-1]) >= self.min_chars:
+            starts_semantic_lead = _is_semantic_lead_at(cur.strip(), 0)
+            if (
+                last_hard_cut
+                and not starts_semantic_lead
+                and blocks
+                and 3 < len(tail_clean) < self.min_chars
+                and len(blocks[-1]) >= self.min_chars
+            ):
                 prev = blocks[-1]
                 need = self.min_chars - len(tail_clean)
                 lo = max(1, len(prev) - need)
@@ -332,6 +361,8 @@ class SubtitleSegmenter:
             return False
         if SubtitleSegmenter._protected_phrase_span_at_boundary(text, i):
             return False
+        if _is_semantic_lead_at(text, i):
+            return True
         if text[i] in WORD_GOOD_LEAD:
             return True
         return i > 0 and text[i - 1] in WORD_GOOD_TAIL and text[i] not in WORD_GOOD_TAIL_BLOCKERS
@@ -350,19 +381,38 @@ class SubtitleSegmenter:
         - 无则 -1，回退算术/标点切分。
         """
         fallback = -1
+        tail_fallback = -1
         for i in range(hi, lo - 1, -1):
             tail = len(text) - i
             if not (i >= min_head or (tail_min > 0 and i >= min_head - 2 and tail >= tail_min)):
                 continue
             if not cls._is_good_cut(text, i):
                 continue
-            if tail > 3 and (tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD):
-                return i
+            is_semantic_lead = _is_semantic_lead_at(text, i)
+            # 语义引导允许短一字（如“他们甚至嚣张到｜把…”），但不再放宽到 min-2，
+            # 避免在“成了”前形成 6 字头块。
+            if is_semantic_lead and i < max(1, min_head - 1):
+                continue
+            # “成了”是谓语起点，但不接受欠长头块；否则“硬生生让蒙元｜成了…”会只剩 6 字。
+            if text[i] == "成" and i < min_head:
+                continue
+            if tail > 3 and (
+                tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD or is_semantic_lead
+            ):
+                if is_semantic_lead:
+                    return i
+                if text[i] in WORD_GOOD_LEAD:
+                    return i
+                if tail_fallback < 0:
+                    tail_fallback = i
+                continue
             # v1.2.3 孤悬尾防护（仅 tail==4 且块首非连词/介词）："着|脖" 劈 "脖子" → 前移找 tail 达标点
             # （"新加坡华人也不想|被掐着…" tail=8）；找不到再回退。
             # "人|为"（为∈good_lead 引导短语）、"个|西"（tail=6）、"能|多"（tail=7）直接接受，不误伤。
             if fallback < 0 and tail == 4 and text[i] not in WORD_GOOD_LEAD and (i == 0 or not text[i - 1].isdigit()):
                 fallback = i
+        if tail_fallback >= 0:
+            return tail_fallback
         if fallback >= 0:
             return fallback
         for i in range(max(lo, min_head), hi + 1):
@@ -394,12 +444,15 @@ class SubtitleSegmenter:
             )
             is_short_tail = b_clean_len <= 3 and prev_clean_len >= self.min_chars
             is_sentence_end = bool(b_stripped) and b_stripped[-1] in SENTENCE_BOUNDARY and b_clean_len > 3
+            starts_semantic_lead = _is_semantic_lead_at(b_stripped, 0)
             merged_len = prev_clean_len + b_clean_len
             if is_sentence_end:
                 merged.append(b)
             elif (
-                prev_clean_len < self.min_chars or is_punct_tail or is_short_tail or b_clean_len < self.min_chars
-            ) and merged_len <= self.max_chars:
+                not starts_semantic_lead
+                and (prev_clean_len < self.min_chars or is_punct_tail or is_short_tail or b_clean_len < self.min_chars)
+                and merged_len <= self.max_chars
+            ):
                 merged[-1] = merged[-1] + b
             else:
                 merged.append(b)
@@ -454,7 +507,9 @@ class SubtitleSegmenter:
         stack: List[int] = []
         drop = [False] * len(text)
         for i, ch in enumerate(text):
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and text[stack[-1]] == ch:
+                stack.pop()
+            elif ch in LEFT_QUOTES:
                 stack.append(i)
             elif ch in RIGHT_QUOTES:
                 if stack and QUOTE_MAP.get(text[stack[-1]]) == ch:

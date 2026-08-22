@@ -416,6 +416,18 @@ class TestSubtitleV123WordAwareRegression:
         assert any("复杂简单化" in b for b in self._blocks("历史上的族群迁徙与政权更迭本就复杂，而民族叙事则倾向于把一切复杂简单化、直线化。"))
         assert any("辽西以东的虚实" in b for b in self._blocks("西周人对东北的了解本就模糊，连分封在河北的燕国早期历史都空白一片，更不要说辽西以东的虚实。"))
 
+    def test_mongol_tax_collectors_semantic_boundaries(self):
+        assert self._blocks(
+            "那时候蒙古统治者水平有限，对汉地的管理极其粗放，江南士绅摇身一变成了蒙元的包税人。大汗把权力一下放，收税成本蹭蹭往下降。"
+        ) == [
+            "那时候蒙古统治者水平有限",
+            "对汉地的管理极其粗放",
+            "江南士绅摇身一变",
+            "成了蒙元的包税人",
+            "大汗把权力一下放",
+            "收税成本蹭蹭往下降",
+        ]
+
     def test_user_acceptance_4_blocks(self):
         # 用户明确期望：挥刀自宫句切成 4 块
         assert self._blocks("这套政策根本经不起扒，说白了就是逼着全体华人为了挤进西方圈子，挥刀自宫搞文化阉割。") == [
