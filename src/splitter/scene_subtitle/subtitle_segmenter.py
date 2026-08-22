@@ -148,20 +148,21 @@ def _round2_half_up(x: float) -> float:
     return math.floor(x * factor + 0.5) / factor
 
 
-
 @lru_cache(maxsize=256)
 def _segmenter_spans(text: str):
     """jieba 词边界跨度；分词器缺失时返回空元组，回退既有规则。"""
     try:
         import jieba
+
         spans = []
         cursor = 0
         for word in jieba.cut(text, cut_all=False):
-            if (not word or len(word) < 2 or len(word) > WORD_ORACLE_MAX_TOKEN_LENGTH
-                    or not all(
-                "\u3400" <= ch <= "\u4dbf" or "\u4e00" <= ch <= "\u9fff"
-                for ch in word
-            )):
+            if (
+                not word
+                or len(word) < 2
+                or len(word) > WORD_ORACLE_MAX_TOKEN_LENGTH
+                or not all("\u3400" <= ch <= "\u4dbf" or "\u4e00" <= ch <= "\u9fff" for ch in word)
+            ):
                 continue
             idx = text.find(word, cursor)
             if idx < 0:
@@ -303,8 +304,10 @@ class SubtitleSegmenter:
                 stack.append(ch)
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
                 stack.pop()
-            if ch in SENTENCE_BOUNDARY and not stack and not (
-                ch == "." and self._is_decimal_point_at(text, source_index)
+            if (
+                ch in SENTENCE_BOUNDARY
+                and not stack
+                and not (ch == "." and self._is_decimal_point_at(text, source_index))
             ):
                 sentences.append(cur)
                 cur = ""
@@ -374,8 +377,10 @@ class SubtitleSegmenter:
                 last_hard_cut = False
                 continue
             # v1.2.3：数字中的小数点（如 713.3）不是切分标点
-            if is_punct and len(cur) >= self.min_chars and not (
-                ch == "." and self._is_decimal_point_at(text, source_index)
+            if (
+                is_punct
+                and len(cur) >= self.min_chars
+                and not (ch == "." and self._is_decimal_point_at(text, source_index))
             ):
                 blocks.append(cur)
                 cur = ""
@@ -391,8 +396,7 @@ class SubtitleSegmenter:
                     tail_min=self.min_chars,
                 )
                 if deferred_pos > 0 and (
-                    _is_semantic_lead_at(cur, deferred_pos)
-                    or cur[deferred_pos] in WORD_GOOD_LEAD
+                    _is_semantic_lead_at(cur, deferred_pos) or cur[deferred_pos] in WORD_GOOD_LEAD
                 ):
                     blocks.append(cur[:deferred_pos])
                     cur = cur[deferred_pos:]
@@ -409,9 +413,7 @@ class SubtitleSegmenter:
                 else:
                     continue
             elif len(cur) >= self.max_chars and not stack:
-                requested_pos = self._apply_enumeration_shift(
-                    cur, self._find_split_pos(cur), require_tail_min=False
-                )
+                requested_pos = self._apply_enumeration_shift(cur, self._find_split_pos(cur), require_tail_min=False)
                 pos = (
                     self._find_safe_cut_position(
                         cur,
@@ -584,9 +586,11 @@ class SubtitleSegmenter:
             return False
         previous = text[i - 1]
         current = text[i]
-        if not ((previous.isdecimal() and current.isdecimal())
-                or (previous.isdecimal() and current == ".")
-                or (previous == "." and current.isdecimal())):
+        if not (
+            (previous.isdecimal() and current.isdecimal())
+            or (previous.isdecimal() and current == ".")
+            or (previous == "." and current.isdecimal())
+        ):
             return False
         start = i
         while start > 0 and (text[start - 1].isdecimal() or text[start - 1] == "."):
@@ -651,10 +655,7 @@ class SubtitleSegmenter:
     @staticmethod
     def _is_soft_word_boundary(text: str, i: int) -> bool:
         """分词器只作为等距候选的软 tie-break，不改变显式保护和字符守卫。"""
-        return any(
-            end == i and end - start <= WORD_ORACLE_MAX_TOKEN_LENGTH
-            for start, end in _segmenter_spans(text)
-        )
+        return any(end == i and end - start <= WORD_ORACLE_MAX_TOKEN_LENGTH for start, end in _segmenter_spans(text))
 
     @staticmethod
     def _is_good_cut(text: str, i: int) -> bool:
@@ -677,9 +678,12 @@ class SubtitleSegmenter:
             return True
         if text[i] in WORD_GOOD_LEAD:
             return True
-        return (i > 0 and text[i - 1] in WORD_GOOD_TAIL
-                and text[i] not in WORD_GOOD_TAIL_BLOCKERS
-                and SubtitleSegmenter._is_safe_cut_position(text, i))
+        return (
+            i > 0
+            and text[i - 1] in WORD_GOOD_TAIL
+            and text[i] not in WORD_GOOD_TAIL_BLOCKERS
+            and SubtitleSegmenter._is_safe_cut_position(text, i)
+        )
 
     @classmethod
     def _word_safe_split(cls, text: str, lo: int, hi: int, min_head: int = 1, tail_min: int = 0) -> int:
