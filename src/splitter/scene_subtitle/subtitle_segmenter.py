@@ -304,9 +304,7 @@ class SubtitleSegmenter:
             if not phrase or len(phrase) < 2:
                 continue
             for prefix_length in range(1, len(phrase)):
-                if text.endswith(phrase[:prefix_length]) and (
-                    best is None or prefix_length > best[2]
-                ):
+                if text.endswith(phrase[:prefix_length]) and (best is None or prefix_length > best[2]):
                     best = phrase, len(text) - prefix_length, prefix_length
         return best
 
