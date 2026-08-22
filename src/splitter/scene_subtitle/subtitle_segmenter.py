@@ -58,6 +58,9 @@ QUOTE_PAIRS = [tuple(pair) for pair in _RULES["quote_pairs"]]
 LEFT_QUOTES = {p[0] for p in QUOTE_PAIRS}
 RIGHT_QUOTES = {p[1] for p in QUOTE_PAIRS}
 QUOTE_MAP = dict(QUOTE_PAIRS)
+SYMMETRIC_QUOTES = {
+    quote for quote in LEFT_QUOTES & RIGHT_QUOTES if QUOTE_MAP.get(quote) == quote
+}
 
 # 时间戳保留 2 位小数：四舍五入（half-up）——与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）
 # 背景：Python round() 为银行家舍入（0.625→0.62），JS 为四舍五入（0.625→0.63），差分测试证实
@@ -153,7 +156,9 @@ class SubtitleSegmenter:
         stack: List[str] = []
         for ch in text:
             cur += ch
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and stack[-1] == ch:
+                stack.pop()
+            elif ch in LEFT_QUOTES:
                 stack.append(ch)
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
                 stack.pop()
@@ -176,7 +181,14 @@ class SubtitleSegmenter:
         cur = ""
         stack: List[tuple] = []  # (quote_char, content_start_index_in_cur)
         for ch in text:
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and stack[-1][0] == ch:
+                _, start = stack.pop()
+                content_len = len(cur) - start - 1
+                cur += ch
+                if not stack and content_len >= self.min_chars:
+                    fragments.append(cur)
+                    cur = ""
+            elif ch in LEFT_QUOTES:
                 stack.append((ch, len(cur)))
                 cur += ch
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1][0]) == ch:
@@ -204,7 +216,9 @@ class SubtitleSegmenter:
         last_hard_cut = False  # 最近一次切分是否为无标点硬切
         for ch in text:
             cur += ch
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and stack[-1] == ch:
+                stack.pop()
+            elif ch in LEFT_QUOTES:
                 stack.append(ch)
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
                 stack.pop()
@@ -377,6 +391,13 @@ class SubtitleSegmenter:
             if not cls._is_good_cut(text, i):
                 continue
             is_semantic_lead = _is_semantic_lead_at(text, i)
+            # 语义引导允许短一字（如“他们甚至嚣张到｜把…”），但不再放宽到 min-2，
+            # 避免在“成了”前形成 6 字头块。
+            if is_semantic_lead and i < max(1, min_head - 1):
+                continue
+            # “成了”是谓语起点，但不接受欠长头块；否则“硬生生让蒙元｜成了…”会只剩 6 字。
+            if text[i] == "成" and i < min_head:
+                continue
             if tail > 3 and (
                 tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD or is_semantic_lead
             ):
@@ -488,7 +509,9 @@ class SubtitleSegmenter:
         stack: List[int] = []
         drop = [False] * len(text)
         for i, ch in enumerate(text):
-            if ch in LEFT_QUOTES:
+            if ch in SYMMETRIC_QUOTES and stack and text[stack[-1]] == ch:
+                stack.pop()
+            elif ch in LEFT_QUOTES:
                 stack.append(i)
             elif ch in RIGHT_QUOTES:
                 if stack and QUOTE_MAP.get(text[stack[-1]]) == ch:
