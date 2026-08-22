@@ -428,6 +428,25 @@ class TestSubtitleV123WordAwareRegression:
             "收税成本蹭蹭往下降",
         ]
 
+    def test_common_words_and_unpaired_quote_body_intact(self):
+        text = (
+            "这种士大夫做大的局面，哪怕朱元璋建立大明也没能彻底翻转。"
+            "暂时没法彻底打破士绅垄断。"
+            '只是这里的"宽"被那些狼心狗肺的人硬说成是"宽仁"。'
+            "那些人用实际行动展现出结果。"
+            '居然还写诗怀念前朝。"字里行间全在抱怨元末的群雄挡了他给蒙元当奴才的路。'
+        )
+        blocks = self._blocks(text)
+        joined = "".join(blocks)
+        expected = text.translate(str.maketrans("", "", "。！？；.!?;…")).replace('前朝"字', "前朝字")
+        assert joined == expected
+        assert any("哪怕" in b for b in blocks)
+        assert any("没法" in b for b in blocks)
+        assert any("那些" in b for b in blocks)
+        assert any("展现" in b for b in blocks)
+        assert any("字里行间全在抱怨" in b for b in blocks)
+        assert any('"宽"' in b for b in blocks)
+
     def test_user_acceptance_4_blocks(self):
         # 用户明确期望：挥刀自宫句切成 4 块
         assert self._blocks("这套政策根本经不起扒，说白了就是逼着全体华人为了挤进西方圈子，挥刀自宫搞文化阉割。") == [

@@ -58,6 +58,55 @@ QUOTE_PAIRS = [tuple(pair) for pair in _RULES["quote_pairs"]]
 LEFT_QUOTES = {p[0] for p in QUOTE_PAIRS}
 RIGHT_QUOTES = {p[1] for p in QUOTE_PAIRS}
 QUOTE_MAP = dict(QUOTE_PAIRS)
+SYMMETRIC_QUOTE_INTRODUCERS = (
+    "感慨",
+    "写道",
+    "说道",
+    "说",
+    "表示",
+    "称",
+    "指出",
+    "告诉",
+    "问",
+    "回答",
+    "引用",
+    "诗句",
+    "如下",
+    "是",
+)
+
+
+def _is_likely_symmetric_opening(text: str, index: int) -> bool:
+    if index <= 0:
+        return True
+    previous = text[index - 1]
+    if previous in "：:，,；;（([{【「『\n ":
+        return True
+    prefix = text[max(0, index - 6) : index]
+    return any(prefix.endswith(word) for word in SYMMETRIC_QUOTE_INTRODUCERS)
+
+
+def _is_likely_symmetric_closing(text: str, index: int) -> bool:
+    if index >= len(text) - 1:
+        return True
+    if _is_likely_symmetric_opening(text, index):
+        return False
+    return text[index + 1] in "。！？；.!?;，,、:：）)]】」』\n "
+
+
+def _has_usable_quote_close(text: str, start: int, quote: str) -> bool:
+    for index in range(start, len(text)):
+        if text[index] == quote:
+            if quote not in {left for left, right in QUOTE_PAIRS if left == right} or _is_likely_symmetric_closing(
+                text, index
+            ):
+                return True
+            return False
+        if text[index] in SENTENCE_BOUNDARY:
+            return False
+    return False
+
+
 SYMMETRIC_QUOTES = {quote for quote in LEFT_QUOTES & RIGHT_QUOTES if QUOTE_MAP.get(quote) == quote}
 
 # 时间戳保留 2 位小数：四舍五入（half-up）——与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）
@@ -124,7 +173,7 @@ class SubtitleSegmenter:
     def _split_to_blocks(self, text: str) -> List[str]:
         """Step 1-6：分句 → 引号 → 长度 → 合并 → 标点 → 强制。"""
         all_blocks: List[str] = []
-        for sentence in self._split_sentences(text):  # Step 1
+        for sentence in self._split_sentences(self._strip_unpaired_quotes(text)):  # Step 1
             for fragment in self._split_quote_boundaries(sentence):  # Step 2
                 blocks = self._length_split(fragment)  # Step 3
                 blocks = self._merge_short(blocks)  # Step 4
@@ -138,6 +187,40 @@ class SubtitleSegmenter:
             for b in all_blocks
             if b.strip() and not all(c in TRAILING_PUNCT or c in LEFT_QUOTES or c in RIGHT_QUOTES for c in b)
         ]
+
+    @staticmethod
+    def _strip_unpaired_quotes(text: str) -> str:
+        """删除孤立引号字符，遇到句界时释放无法在当前句内闭合的引号。"""
+        drop = [False] * len(text)
+        stack: List[tuple[str, int]] = []
+        symmetric_quotes = {left for left, right in QUOTE_PAIRS if left == right}
+        for index, ch in enumerate(text):
+            if ch in symmetric_quotes:
+                top = stack[-1] if stack else None
+                if top and top[0] == ch and not _is_likely_symmetric_opening(text, index):
+                    stack.pop()
+                elif top and top[0] == ch:
+                    drop[top[1]] = True
+                    stack.pop()
+                    stack.append((ch, index))
+                else:
+                    stack.append((ch, index))
+            elif ch in LEFT_QUOTES:
+                stack.append((ch, index))
+            elif ch in RIGHT_QUOTES:
+                if stack and QUOTE_MAP.get(stack[-1][0]) == ch:
+                    stack.pop()
+                else:
+                    drop[index] = True
+            if ch in SENTENCE_BOUNDARY:
+                while stack:
+                    close = QUOTE_MAP.get(stack[-1][0])
+                    if close and _has_usable_quote_close(text, index + 1, close):
+                        break
+                    drop[stack.pop()[1]] = True
+        for _, index in stack:
+            drop[index] = True
+        return "".join(ch for index, ch in enumerate(text) if not drop[index])
 
     @staticmethod
     def _is_number_dot(text: str) -> bool:
@@ -329,12 +412,17 @@ class SubtitleSegmenter:
     def _protected_phrase_prefix_at_end(text: str):
         """返回文本末尾尚未完整出现的受保护短语前缀，避免流式累积在前缀中间切断。"""
         best = None
+        complete_length = 0
         for phrase in WORD_NO_CUT_PHRASES:
             if not phrase or len(phrase) < 2:
                 continue
+            if text.endswith(phrase) and len(phrase) > complete_length:
+                complete_length = len(phrase)
             for prefix_length in range(1, len(phrase)):
                 if text.endswith(phrase[:prefix_length]) and (best is None or prefix_length > best[2]):
                     best = phrase, len(text) - prefix_length, prefix_length
+        if best is not None and complete_length >= best[2]:
+            return None
         return best
 
     @classmethod
