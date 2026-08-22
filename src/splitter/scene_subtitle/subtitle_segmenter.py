@@ -74,10 +74,9 @@ WORD_BAD_FOLLOWERS = set(_RULES["word_split"]["bad_followers"])
 # 与 bad_followers（第二趟非黏着切点用）分离：电/视/剧/这 等虽在 bad_followers，
 # 但 "的|电视…"、"是|这位…" 是好切点，不能被误伤。
 WORD_GOOD_TAIL_BLOCKERS = set(_RULES["word_split"].get("good_tail_blockers", ""))
-# v1.2.3：成词保护（no_cut_bigrams）——切点两侧（前一字符 + 切后首字符）构成这些
-# 双字词时禁止切开（如 "能|够"、"就|是"、"做|成"）。这是对标点/长度切分的
-# "前瞻检查"：不只判断块长，还检查切点是否落在词内。
-WORD_NO_CUT_BIGRAMS = set(_RULES["word_split"].get("no_cut_bigrams", []))
+# v1.2.3：成词保护（兼容字段名 no_cut_bigrams）——项目可以是任意长度短语，
+# 切点不得落在任一短语内部（如 "蒙古"、"江南"、"包税人"）。
+WORD_NO_CUT_PHRASES = set(_RULES["word_split"].get("no_cut_bigrams", []))
 
 
 def _round2_half_up(x: float) -> float:
@@ -207,6 +206,7 @@ class SubtitleSegmenter:
                 last_hard_cut = False
             elif len(cur) >= self.max_chars and not stack:
                 pos = self._apply_enumeration_shift(cur, self._find_split_pos(cur), require_tail_min=False)
+                pos = self._safe_cut_position(cur, pos)
                 if pos > 0:
                     blocks.append(cur[:pos])
                     cur = cur[pos:]
@@ -220,7 +220,9 @@ class SubtitleSegmenter:
                         min_head=self.min_chars,
                         tail_min=self.min_chars,
                     )
-                    pos = ws if ws > 0 else len(cur)
+                    pos = self._safe_cut_position(cur, ws if ws > 0 else len(cur))
+                    if pos <= 0:
+                        continue
                     blocks.append(cur[:pos])
                     cur = cur[pos:]
                     last_hard_cut = True
@@ -277,17 +279,58 @@ class SubtitleSegmenter:
         return len(text.strip().rstrip("".join(TRAILING_PUNCT)))
 
     @staticmethod
+    def _protected_phrase_span_at_boundary(text: str, i: int):
+        """返回切点所在的受保护短语跨度；切点恰在短语两端时安全。"""
+        if i <= 0 or i >= len(text):
+            return None
+        for phrase in WORD_NO_CUT_PHRASES:
+            if not phrase or len(phrase) < 2:
+                continue
+            start = text.find(phrase)
+            while start >= 0:
+                end = start + len(phrase)
+                if start < i < end:
+                    return phrase, start, end
+                if start >= i:
+                    break
+                start = text.find(phrase, start + 1)
+        return None
+
+    @staticmethod
+    def _protected_phrase_prefix_at_end(text: str):
+        """返回文本末尾尚未完整出现的受保护短语前缀，避免流式累积在前缀中间切断。"""
+        best = None
+        for phrase in WORD_NO_CUT_PHRASES:
+            if not phrase or len(phrase) < 2:
+                continue
+            for prefix_length in range(1, len(phrase)):
+                if text.endswith(phrase[:prefix_length]) and (best is None or prefix_length > best[2]):
+                    best = phrase, len(text) - prefix_length, prefix_length
+        return best
+
+    @classmethod
+    def _safe_cut_position(cls, text: str, i: int) -> int:
+        """将候选切点移到受保护短语外，保证字幕块边界不落在短语内部。"""
+        span = cls._protected_phrase_span_at_boundary(text, i)
+        if span is not None:
+            return span[1] if span[1] > 0 else span[2]
+        prefix = cls._protected_phrase_prefix_at_end(text)
+        if prefix is not None and i >= prefix[1]:
+            return prefix[1] if prefix[1] > 0 else 0
+        return i
+
+    @staticmethod
     def _is_good_cut(text: str, i: int) -> bool:
         """词边界好切点：切点后为连词/介词（块首引导），或切点前为助词/副词/句内标点（块尾收束）。
 
         v1.2.2：块尾收束路径（text[i-1] 为收束字）额外要求切点后首字符非强黏着后缀
         （good_tail_blockers），避免 "…保持个|性独立" 类劈词（"个" 入 good_tail 后 "个性" 被拆）；
         只用独立排除集而非 bad_followers，避免误伤 "的|电视…"、"是|这位…" 等好切点。
-        v1.2.3：切点落在成词内（如 "能|够"、"就|是"、"因|为"）一律不是好切点。
+        v1.2.3：切点落在任意长度成词短语内部一律不是好切点。
         """
         if i >= len(text):
             return False
-        if i > 0 and text[i - 1 : i + 1] in WORD_NO_CUT_BIGRAMS:
+        if SubtitleSegmenter._protected_phrase_span_at_boundary(text, i):
             return False
         if text[i] in WORD_GOOD_LEAD:
             return True
@@ -327,7 +370,7 @@ class SubtitleSegmenter:
                 i < len(text)
                 and text[i] not in WORD_BAD_FOLLOWERS
                 and (i == 0 or not text[i - 1].isdigit())
-                and (i == 0 or text[i - 1 : i + 1] not in WORD_NO_CUT_BIGRAMS)
+                and not cls._protected_phrase_span_at_boundary(text, i)
             ):
                 return i
         return -1
@@ -434,19 +477,30 @@ class SubtitleSegmenter:
         for b in blocks:
             while len(b) > self.max_chars:
                 pos = self._apply_enumeration_shift(b, self._find_split_pos(b))
+                pos = self._safe_cut_position(b, pos)
+                if any(phrase == b for phrase in WORD_NO_CUT_PHRASES):
+                    # 保护短语本身可能比 max_chars 更长；完整短语优先于违反长度上限。
+                    out.append(b)
+                    b = ""
+                    break
                 if pos <= 0 or pos >= len(b):
                     pos = self.max_chars
+                # 固定长度兜底后再次检查，避免兜底切点落回受保护短语内部。
+                pos = self._safe_cut_position(b, pos)
+                if pos <= 0 or pos >= len(b):
+                    pos = min(self.max_chars, len(b) - 1)
                 # 平衡约束：尾块 < min_chars 时前移切分点（v1.2：词边界感知 + 越界修复）
                 if len(b) - pos < self.min_chars:
                     min_pos = max(1, len(b) - self.min_chars)
                     hi = len(b) - 1
                     ws = self._word_safe_split(b, min_pos, hi, min_head=min_pos, tail_min=self.min_chars)
                     if ws > 0 and ws < len(b):
-                        pos = ws
+                        pos = self._safe_cut_position(b, ws)
                     else:
                         # 越界修复：balanced == len(b)（尾字符恰为标点时 i+1 越界）视为无效
                         balanced = self._find_split_pos_in_range(b, min_pos, hi)
                         pos = balanced if 0 < balanced < len(b) else min_pos
+                        pos = self._safe_cut_position(b, pos)
                 out.append(b[:pos])
                 b = b[pos:]
             if b:
