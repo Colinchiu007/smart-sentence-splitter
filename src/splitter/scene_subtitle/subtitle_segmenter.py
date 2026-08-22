@@ -58,9 +58,7 @@ QUOTE_PAIRS = [tuple(pair) for pair in _RULES["quote_pairs"]]
 LEFT_QUOTES = {p[0] for p in QUOTE_PAIRS}
 RIGHT_QUOTES = {p[1] for p in QUOTE_PAIRS}
 QUOTE_MAP = dict(QUOTE_PAIRS)
-SYMMETRIC_QUOTES = {
-    quote for quote in LEFT_QUOTES & RIGHT_QUOTES if QUOTE_MAP.get(quote) == quote
-}
+SYMMETRIC_QUOTES = {quote for quote in LEFT_QUOTES & RIGHT_QUOTES if QUOTE_MAP.get(quote) == quote}
 
 # 时间戳保留 2 位小数：四舍五入（half-up）——与 TypeScript Math.round(x*100)/100 语义一致（v0.15.1）
 # 背景：Python round() 为银行家舍入（0.625→0.62），JS 为四舍五入（0.625→0.63），差分测试证实
