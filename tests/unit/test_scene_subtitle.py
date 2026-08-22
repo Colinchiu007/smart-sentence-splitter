@@ -2,6 +2,7 @@
 
 import pytest
 from splitter.models import SentenceBlock, SceneSegment
+from splitter.scene_subtitle import subtitle_segmenter as subtitle_segmenter_module
 from splitter.scene_subtitle.scene_segmenter import SceneSegmenter
 from splitter.scene_subtitle.subtitle_segmenter import SubtitleSegmenter
 
@@ -67,6 +68,17 @@ class TestSceneSegmenter:
 
 
 class TestSubtitleSegmenter:
+    def test_jieba_runtime_failure_falls_back_to_rule_boundaries(self, monkeypatch):
+        """分词器运行时异常不得穿透字幕主流程。"""
+        subtitle_segmenter_module._segmenter_spans.cache_clear()
+
+        def broken_cut(*_args, **_kwargs):
+            raise RuntimeError("synthetic jieba failure")
+
+        monkeypatch.setattr("jieba.cut", broken_cut)
+        assert subtitle_segmenter_module._segmenter_spans("运行时异常回退用例") == ()
+        subtitle_segmenter_module._segmenter_spans.cache_clear()
+
     def test_basic_split(self):
         seg = SubtitleSegmenter(
             {
