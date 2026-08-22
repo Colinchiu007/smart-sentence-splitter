@@ -246,7 +246,13 @@ class SubtitleSegmenter:
             # （用清理后长度判断，避免把 "上打盹。"（清理后 3 字，合法短尾）误判为需要平衡）
             tail_clean = cur.strip().rstrip("".join(TRAILING_PUNCT))
             starts_semantic_lead = _is_semantic_lead_at(cur.strip(), 0)
-            if last_hard_cut and not starts_semantic_lead and blocks and 3 < len(tail_clean) < self.min_chars and len(blocks[-1]) >= self.min_chars:
+            if (
+                last_hard_cut
+                and not starts_semantic_lead
+                and blocks
+                and 3 < len(tail_clean) < self.min_chars
+                and len(blocks[-1]) >= self.min_chars
+            ):
                 prev = blocks[-1]
                 need = self.min_chars - len(tail_clean)
                 lo = max(1, len(prev) - need)
@@ -371,7 +377,9 @@ class SubtitleSegmenter:
             if not cls._is_good_cut(text, i):
                 continue
             is_semantic_lead = _is_semantic_lead_at(text, i)
-            if tail > 3 and (tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD or is_semantic_lead):
+            if tail > 3 and (
+                tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD or is_semantic_lead
+            ):
                 if is_semantic_lead:
                     return i
                 if text[i] in WORD_GOOD_LEAD:
@@ -421,9 +429,11 @@ class SubtitleSegmenter:
             merged_len = prev_clean_len + b_clean_len
             if is_sentence_end:
                 merged.append(b)
-            elif not starts_semantic_lead and (
-                prev_clean_len < self.min_chars or is_punct_tail or is_short_tail or b_clean_len < self.min_chars
-            ) and merged_len <= self.max_chars:
+            elif (
+                not starts_semantic_lead
+                and (prev_clean_len < self.min_chars or is_punct_tail or is_short_tail or b_clean_len < self.min_chars)
+                and merged_len <= self.max_chars
+            ):
                 merged[-1] = merged[-1] + b
             else:
                 merged.append(b)
