@@ -350,6 +350,7 @@ class SubtitleSegmenter:
         - 无则 -1，回退算术/标点切分。
         """
         fallback = -1
+        tail_fallback = -1
         for i in range(hi, lo - 1, -1):
             tail = len(text) - i
             if not (i >= min_head or (tail_min > 0 and i >= min_head - 2 and tail >= tail_min)):
@@ -357,12 +358,18 @@ class SubtitleSegmenter:
             if not cls._is_good_cut(text, i):
                 continue
             if tail > 3 and (tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD):
-                return i
+                if text[i] in WORD_GOOD_LEAD:
+                    return i
+                if tail_fallback < 0:
+                    tail_fallback = i
+                continue
             # v1.2.3 孤悬尾防护（仅 tail==4 且块首非连词/介词）："着|脖" 劈 "脖子" → 前移找 tail 达标点
             # （"新加坡华人也不想|被掐着…" tail=8）；找不到再回退。
             # "人|为"（为∈good_lead 引导短语）、"个|西"（tail=6）、"能|多"（tail=7）直接接受，不误伤。
             if fallback < 0 and tail == 4 and text[i] not in WORD_GOOD_LEAD and (i == 0 or not text[i - 1].isdigit()):
                 fallback = i
+        if tail_fallback >= 0:
+            return tail_fallback
         if fallback >= 0:
             return fallback
         for i in range(max(lo, min_head), hi + 1):
