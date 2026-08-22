@@ -68,6 +68,8 @@ ROUND_DECIMALS = int(_RULES["rounding"]["decimal_places"])
 # 切点判定 = 块首为连词/介词（引导短语）或块尾为助词/副词/句内标点（收束）；
 # 块首为强黏着后缀时排除（避免 "扶余|国"、"电|视剧" 类劈词）。
 WORD_GOOD_LEAD = set(_RULES["word_split"]["good_lead"])
+WORD_SEMANTIC_LEAD = set(_RULES["word_split"].get("semantic_lead", ""))
+WORD_SEMANTIC_LEAD_FOLLOWERS = _RULES["word_split"].get("semantic_lead_followers", {})
 WORD_GOOD_TAIL = set(_RULES["word_split"]["good_tail"])
 WORD_BAD_FOLLOWERS = set(_RULES["word_split"]["bad_followers"])
 # v1.2.2：good_tail 路径的块首排除集（仅纯黏着后缀，如 "个|性" 的 性）。
@@ -77,6 +79,14 @@ WORD_GOOD_TAIL_BLOCKERS = set(_RULES["word_split"].get("good_tail_blockers", "")
 # v1.2.3：成词保护（兼容字段名 no_cut_bigrams）——项目可以是任意长度短语，
 # 切点不得落在任一短语内部（如 "蒙古"、"江南"、"包税人"）。
 WORD_NO_CUT_PHRASES = set(_RULES["word_split"].get("no_cut_bigrams", []))
+
+
+def _is_semantic_lead_at(text: str, index: int) -> bool:
+    """语义引导字必须满足自身的词组后续约束（如“提”只在“提前”中生效）。"""
+    if index < 0 or index >= len(text) or text[index] not in WORD_SEMANTIC_LEAD:
+        return False
+    allowed_followers = WORD_SEMANTIC_LEAD_FOLLOWERS.get(text[index])
+    return allowed_followers is None or (index + 1 < len(text) and text[index + 1] in allowed_followers)
 
 
 def _round2_half_up(x: float) -> float:
@@ -235,7 +245,8 @@ class SubtitleSegmenter:
             # 平衡约束：硬切后的尾块清理后为 4..min-1 字（非合法 ≤3 短尾）时，从上一块让字给尾块
             # （用清理后长度判断，避免把 "上打盹。"（清理后 3 字，合法短尾）误判为需要平衡）
             tail_clean = cur.strip().rstrip("".join(TRAILING_PUNCT))
-            if last_hard_cut and blocks and 3 < len(tail_clean) < self.min_chars and len(blocks[-1]) >= self.min_chars:
+            starts_semantic_lead = _is_semantic_lead_at(cur.strip(), 0)
+            if last_hard_cut and not starts_semantic_lead and blocks and 3 < len(tail_clean) < self.min_chars and len(blocks[-1]) >= self.min_chars:
                 prev = blocks[-1]
                 need = self.min_chars - len(tail_clean)
                 lo = max(1, len(prev) - need)
@@ -332,6 +343,8 @@ class SubtitleSegmenter:
             return False
         if SubtitleSegmenter._protected_phrase_span_at_boundary(text, i):
             return False
+        if _is_semantic_lead_at(text, i):
+            return True
         if text[i] in WORD_GOOD_LEAD:
             return True
         return i > 0 and text[i - 1] in WORD_GOOD_TAIL and text[i] not in WORD_GOOD_TAIL_BLOCKERS
@@ -357,7 +370,10 @@ class SubtitleSegmenter:
                 continue
             if not cls._is_good_cut(text, i):
                 continue
-            if tail > 3 and (tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD):
+            is_semantic_lead = _is_semantic_lead_at(text, i)
+            if tail > 3 and (tail_min == 0 or tail >= tail_min or tail >= 5 or text[i] in WORD_GOOD_LEAD or is_semantic_lead):
+                if is_semantic_lead:
+                    return i
                 if text[i] in WORD_GOOD_LEAD:
                     return i
                 if tail_fallback < 0:
@@ -401,10 +417,11 @@ class SubtitleSegmenter:
             )
             is_short_tail = b_clean_len <= 3 and prev_clean_len >= self.min_chars
             is_sentence_end = bool(b_stripped) and b_stripped[-1] in SENTENCE_BOUNDARY and b_clean_len > 3
+            starts_semantic_lead = _is_semantic_lead_at(b_stripped, 0)
             merged_len = prev_clean_len + b_clean_len
             if is_sentence_end:
                 merged.append(b)
-            elif (
+            elif not starts_semantic_lead and (
                 prev_clean_len < self.min_chars or is_punct_tail or is_short_tail or b_clean_len < self.min_chars
             ) and merged_len <= self.max_chars:
                 merged[-1] = merged[-1] + b
