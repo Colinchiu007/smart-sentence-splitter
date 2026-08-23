@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from functools import lru_cache
 from typing import List
 
 from ..models import SubtitleBlock, SceneSegment
@@ -126,6 +127,8 @@ WORD_BAD_FOLLOWERS = set(_RULES["word_split"]["bad_followers"])
 # 与 bad_followers（第二趟非黏着切点用）分离：电/视/剧/这 等虽在 bad_followers，
 # 但 "的|电视…"、"是|这位…" 是好切点，不能被误伤。
 WORD_GOOD_TAIL_BLOCKERS = set(_RULES["word_split"].get("good_tail_blockers", ""))
+CUT_AFTER_LE_ALLOW = set(_RULES["word_split"].get("cut_after_le_allow", ""))
+WORD_ORACLE_MAX_TOKEN_LENGTH = int(_RULES["word_split"].get("oracle_max_token_length", 8))
 # v1.2.3：成词保护（兼容字段名 no_cut_bigrams）——项目可以是任意长度短语，
 # 切点不得落在任一短语内部（如 "蒙古"、"江南"、"包税人"）。
 WORD_NO_CUT_PHRASES = set(_RULES["word_split"].get("no_cut_bigrams", []))
@@ -143,6 +146,39 @@ def _round2_half_up(x: float) -> float:
     """保留 2 位小数，四舍五入（half-up）。"""
     factor = 10**ROUND_DECIMALS
     return math.floor(x * factor + 0.5) / factor
+
+
+@lru_cache(maxsize=256)
+def _segmenter_spans(text: str):
+    """jieba 词边界跨度；分词器缺失时返回空元组，回退既有规则。"""
+    try:
+        import jieba
+
+        spans = []
+        cursor = 0
+        for word in jieba.cut(text, cut_all=False):
+            if (
+                not word
+                or len(word) < 2
+                or len(word) > WORD_ORACLE_MAX_TOKEN_LENGTH
+                or not all("\u3400" <= ch <= "\u4dbf" or "\u4e00" <= ch <= "\u9fff" for ch in word)
+            ):
+                continue
+            idx = text.find(word, cursor)
+            if idx < 0:
+                continue
+            end = idx + len(word)
+            previous_end = spans[-1][1] if spans else 0
+            if idx < cursor or idx < previous_end or end <= idx or end > len(text):
+                continue
+            if text[idx:end] != word:
+                continue
+            spans.append((idx, end))
+            cursor = end
+        return tuple(spans)
+    except Exception:
+        # 分词器初始化、词典加载或迭代异常时，退回字符规则，不让 soft tie-break 破坏主流程。
+        return ()
 
 
 class SubtitleSegmenter:
@@ -223,19 +259,44 @@ class SubtitleSegmenter:
         return "".join(ch for index, ch in enumerate(text) if not drop[index])
 
     @staticmethod
-    def _is_number_dot(text: str) -> bool:
-        """当前累积文本以 数字+半角点 结尾（如 "713."）→ 该 "." 是小数点/数字一部分，不是句界。
+    def _is_ascii_word_char(char: str | None) -> bool:
+        return bool(char) and (char.isascii() and (char.isalnum() or char == "_"))
 
-        v1.2.3：半角点同时是句界/标点集成员，直接套用会把 "降雨量狂飙到一天713.3毫米" 劈成 "713."+"3毫米"。
-        """
-        return len(text) >= 2 and text[-1] == "." and text[-2].isdigit()
+    @classmethod
+    def _is_decimal_token(cls, text: str, start: int, end: int) -> bool:
+        token = text[start:end]
+        if not token or token.count(".") != 1:
+            return False
+        integer, fraction = token.split(".")
+        if not integer.isdecimal() or not fraction.isdecimal():
+            return False
+        return not cls._is_ascii_word_char(text[start - 1] if start > 0 else None) and not cls._is_ascii_word_char(
+            text[end] if end < len(text) else None
+        )
+
+    @classmethod
+    def _is_decimal_point_at(cls, text: str, index: int) -> bool:
+        if index < 0 or index >= len(text) or text[index] != ".":
+            return False
+        start = index
+        while start > 0 and (text[start - 1].isdecimal() or text[start - 1] == "."):
+            start -= 1
+        end = index + 1
+        while end < len(text) and (text[end].isdecimal() or text[end] == "."):
+            end += 1
+        return cls._is_decimal_token(text, start, end)
+
+    @classmethod
+    def _is_number_dot(cls, text: str) -> bool:
+        """保留兼容入口，但只豁免完整的数字小数 token。"""
+        return len(text) >= 1 and cls._is_decimal_point_at(text, len(text) - 1)
 
     def _split_sentences(self, text: str) -> List[str]:
         """Step 1：按句界切分（句界字符归属前块）；未闭合引号内的句界不生效（保护引号配对）。"""
         sentences: List[str] = []
         cur = ""
         stack: List[str] = []
-        for ch in text:
+        for source_index, ch in enumerate(text):
             cur += ch
             if ch in SYMMETRIC_QUOTES and stack and stack[-1] == ch:
                 stack.pop()
@@ -243,7 +304,11 @@ class SubtitleSegmenter:
                 stack.append(ch)
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
                 stack.pop()
-            if ch in SENTENCE_BOUNDARY and not stack and not self._is_number_dot(cur):
+            if (
+                ch in SENTENCE_BOUNDARY
+                and not stack
+                and not (ch == "." and self._is_decimal_point_at(text, source_index))
+            ):
                 sentences.append(cur)
                 cur = ""
         if cur:
@@ -261,7 +326,7 @@ class SubtitleSegmenter:
         fragments: List[str] = []
         cur = ""
         stack: List[tuple] = []  # (quote_char, content_start_index_in_cur)
-        for ch in text:
+        for source_index, ch in enumerate(text):
             if ch in SYMMETRIC_QUOTES and stack and stack[-1][0] == ch:
                 _, start = stack.pop()
                 content_len = len(cur) - start - 1
@@ -295,7 +360,7 @@ class SubtitleSegmenter:
         cur = ""
         stack: List[str] = []
         last_hard_cut = False  # 最近一次切分是否为无标点硬切
-        for ch in text:
+        for source_index, ch in enumerate(text):
             cur += ch
             if ch in SYMMETRIC_QUOTES and stack and stack[-1] == ch:
                 stack.pop()
@@ -304,14 +369,61 @@ class SubtitleSegmenter:
             elif ch in RIGHT_QUOTES and stack and QUOTE_MAP.get(stack[-1]) == ch:
                 stack.pop()
             is_punct = ch in PRIORITY_PUNCT or ch in (" ", "\n", "\u3000")
-            # v1.2.3：数字中的小数点（如 713.3）不是切分标点
-            if is_punct and len(cur) >= self.min_chars and not (ch == "." and len(cur) >= 2 and cur[-2].isdigit()):
+            phrase_at_start = self._protected_phrase_starting_at(cur)
+            if not stack and phrase_at_start == cur and len(cur) > self.max_chars:
+                # 显式短语是原子单元，允许它单独超过 max；后续字符从新块开始累积。
                 blocks.append(cur)
                 cur = ""
                 last_hard_cut = False
+                continue
+            # v1.2.3：数字中的小数点（如 713.3）不是切分标点
+            if (
+                is_punct
+                and len(cur) >= self.min_chars
+                and not (ch == "." and self._is_decimal_point_at(text, source_index))
+            ):
+                blocks.append(cur)
+                cur = ""
+                last_hard_cut = False
+            elif len(cur) == self.max_chars and not stack and cur.endswith("了"):
+                # 满块刚好停在“了”时，先兑现已经可见的强语义边界；
+                # 否则等待后续字，避免在尚未看到宾语时提前切分。
+                deferred_pos = self._word_safe_split(
+                    cur,
+                    1,
+                    len(cur) - 1,
+                    min_head=self.min_chars,
+                    tail_min=self.min_chars,
+                )
+                if deferred_pos > 0 and (
+                    _is_semantic_lead_at(cur, deferred_pos) or cur[deferred_pos] in WORD_GOOD_LEAD
+                ):
+                    blocks.append(cur[:deferred_pos])
+                    cur = cur[deferred_pos:]
+                    last_hard_cut = False
+                else:
+                    continue
+            elif len(cur) >= self.max_chars + 1 and not stack and cur[self.max_chars - 1] == "了":
+                # “了”后的边界要等到后续字足够明确；普通宾语继续留在当前块，
+                # 而“了他给……”在看到“给”后才允许从“了”后切开。
+                if self._is_le_boundary_allowed(cur, self.max_chars):
+                    blocks.append(cur[: self.max_chars])
+                    cur = cur[self.max_chars :]
+                    last_hard_cut = False
+                else:
+                    continue
             elif len(cur) >= self.max_chars and not stack:
-                pos = self._apply_enumeration_shift(cur, self._find_split_pos(cur), require_tail_min=False)
-                pos = self._safe_cut_position(cur, pos)
+                requested_pos = self._apply_enumeration_shift(cur, self._find_split_pos(cur), require_tail_min=False)
+                pos = (
+                    self._find_safe_cut_position(
+                        cur,
+                        requested_pos,
+                        1,
+                        min(self.max_chars, len(cur) - 1),
+                    )
+                    if requested_pos > 0
+                    else -1
+                )
                 if pos > 0:
                     blocks.append(cur[:pos])
                     cur = cur[pos:]
@@ -325,11 +437,16 @@ class SubtitleSegmenter:
                         min_head=self.min_chars,
                         tail_min=self.min_chars,
                     )
-                    pos = self._safe_cut_position(cur, ws if ws > 0 else len(cur))
-                    if pos <= 0:
+                    hard_pos = self._find_safe_cut_position(
+                        cur,
+                        ws if ws > 0 else min(self.max_chars, len(cur) - 1),
+                        1,
+                        min(self.max_chars, len(cur) - 1),
+                    )
+                    if hard_pos <= 0:
                         continue
-                    blocks.append(cur[:pos])
-                    cur = cur[pos:]
+                    blocks.append(cur[:hard_pos])
+                    cur = cur[hard_pos:]
                     last_hard_cut = True
             elif len(cur) >= self.max_chars * 2 and stack:
                 blocks.append(cur)
@@ -353,18 +470,38 @@ class SubtitleSegmenter:
                 lo = max(1, len(prev) - need)
                 hi = len(prev) - 1
                 pos = self._find_split_pos_in_range(prev, lo, hi)
+                pos = (
+                    self._find_safe_cut_position(
+                        prev,
+                        pos,
+                        1,
+                        min(lo, len(prev) - 1),
+                    )
+                    if pos > 0
+                    else -1
+                )
                 if pos <= 0:
                     # v1.2.2 词边界感知让字：区间内无标点时，向 lo 左侧找不劈词的好切点
                     # （避免把 "…从文化认|同滑向…" 的 "同" 硬让出劈开 "文化认同"）。
                     ws = self._word_safe_split(prev, 1, lo, min_head=1)
-                    pos = ws if ws > 0 else lo
-                blocks[-1] = prev[:pos]
-                cur = prev[pos:] + cur
+                    pos = (
+                        self._find_safe_cut_position(
+                            prev,
+                            ws,
+                            1,
+                            min(lo, len(prev) - 1),
+                        )
+                        if ws > 0
+                        else -1
+                    )
+                if pos > 0:
+                    blocks[-1] = prev[:pos]
+                    cur = prev[pos:] + cur
             blocks.append(cur)
         return [b for b in blocks if b.strip()]
 
-    @staticmethod
-    def _find_split_pos(text: str) -> int:
+    @classmethod
+    def _find_split_pos(cls, text: str) -> int:
         """从后往前找切分锚点（返回切后索引；无则 -1）。
 
         v1.1 顿号优先级最低：先找更高优先级标点（顿号除外），再找空格，最后顿号兜底——
@@ -372,9 +509,7 @@ class SubtitleSegmenter:
         """
         for i in range(len(text) - 1, -1, -1):
             if text[i] in PRIORITY_PUNCT and text[i] != "、":
-                if text[i] == "." and (
-                    (i > 0 and text[i - 1].isdigit()) or (i + 1 < len(text) and text[i + 1].isdigit())
-                ):
+                if text[i] == "." and cls._is_decimal_point_at(text, i):
                     continue  # v1.2.3：数字中的小数点不是切分锚点
                 return i + 1
         for i in range(len(text) - 1, -1, -1):
@@ -409,6 +544,15 @@ class SubtitleSegmenter:
         return None
 
     @staticmethod
+    def _protected_phrase_starting_at(text: str):
+        """返回文本开头匹配到的最长显式保护短语；普通分词 token 仅作软提示。"""
+        best = None
+        for phrase in WORD_NO_CUT_PHRASES:
+            if phrase and text.startswith(phrase) and (best is None or len(phrase) > len(best)):
+                best = phrase
+        return best
+
+    @staticmethod
     def _protected_phrase_prefix_at_end(text: str):
         """返回文本末尾尚未完整出现的受保护短语前缀，避免流式累积在前缀中间切断。"""
         best = None
@@ -436,6 +580,83 @@ class SubtitleSegmenter:
             return prefix[1] if prefix[1] > 0 else 0
         return i
 
+    @classmethod
+    def _is_decimal_interior(cls, text: str, i: int) -> bool:
+        if i <= 0 or i >= len(text):
+            return False
+        previous = text[i - 1]
+        current = text[i]
+        if not (
+            (previous.isdecimal() and current.isdecimal())
+            or (previous.isdecimal() and current == ".")
+            or (previous == "." and current.isdecimal())
+        ):
+            return False
+        start = i
+        while start > 0 and (text[start - 1].isdecimal() or text[start - 1] == "."):
+            start -= 1
+        end = i
+        while end < len(text) and (text[end].isdecimal() or text[end] == "."):
+            end += 1
+        return cls._is_decimal_token(text, start, end)
+
+    @staticmethod
+    def _is_le_boundary_allowed(text: str, i: int) -> bool:
+        """了后的边界保护：默认保留普通宾语，允许标点/从句引导和明确语义转折。"""
+        if i <= 0 or text[i - 1] != "了":
+            return True
+        if text[i] in CUT_AFTER_LE_ALLOW:
+            return True
+        next_pair = text[i : i + 2]
+        if len(next_pair) == 2 and next_pair[0] in "他她它其这那" and next_pair[1] in "给在还就要将被从对是有能会想把":
+            return True
+        before = text[max(0, i - 4) : i]
+        return before.endswith("成了") and not before.endswith("完成了") and not before.endswith("做成了")
+
+    @classmethod
+    def _is_safe_cut_position(cls, text: str, i: int) -> bool:
+        if i <= 0 or i >= len(text):
+            return False
+        if cls._protected_phrase_span_at_boundary(text, i):
+            return False
+        if not cls._is_le_boundary_allowed(text, i):
+            return False
+        return not cls._is_decimal_interior(text, i)
+
+    @classmethod
+    def _find_safe_cut_position(cls, text: str, preferred: int, lo: int = 1, hi: int | None = None) -> int:
+        lower = max(1, lo)
+        upper = min(len(text) - 1, hi if hi is not None else len(text) - 1)
+        if lower > upper:
+            return -1
+        bounded = min(upper, max(lower, preferred))
+        direct = cls._safe_cut_position(text, bounded)
+        if lower <= direct <= upper and cls._is_safe_cut_position(text, direct):
+            return direct
+        for distance in range(1, upper - lower + 1):
+            candidates = []
+            right = bounded + distance
+            if right <= upper:
+                candidate = cls._safe_cut_position(text, right)
+                if lower <= candidate <= upper and cls._is_safe_cut_position(text, candidate):
+                    candidates.append(candidate)
+            left = bounded - distance
+            if left >= lower:
+                candidate = cls._safe_cut_position(text, left)
+                if lower <= candidate <= upper and cls._is_safe_cut_position(text, candidate):
+                    candidates.append(candidate)
+            soft = next((candidate for candidate in candidates if cls._is_soft_word_boundary(text, candidate)), None)
+            if soft is not None:
+                return soft
+            if candidates:
+                return candidates[0]
+        return -1
+
+    @staticmethod
+    def _is_soft_word_boundary(text: str, i: int) -> bool:
+        """分词器只作为等距候选的软 tie-break，不改变显式保护和字符守卫。"""
+        return any(end == i and end - start <= WORD_ORACLE_MAX_TOKEN_LENGTH for start, end in _segmenter_spans(text))
+
     @staticmethod
     def _is_good_cut(text: str, i: int) -> bool:
         """词边界好切点：切点后为连词/介词（块首引导），或切点前为助词/副词/句内标点（块尾收束）。
@@ -445,15 +666,24 @@ class SubtitleSegmenter:
         只用独立排除集而非 bad_followers，避免误伤 "的|电视…"、"是|这位…" 等好切点。
         v1.2.3：切点落在任意长度成词短语内部一律不是好切点。
         """
-        if i >= len(text):
+        if i <= 0 or i >= len(text):
+            return False
+        if not SubtitleSegmenter._is_le_boundary_allowed(text, i):
             return False
         if SubtitleSegmenter._protected_phrase_span_at_boundary(text, i):
+            return False
+        if not SubtitleSegmenter._is_safe_cut_position(text, i):
             return False
         if _is_semantic_lead_at(text, i):
             return True
         if text[i] in WORD_GOOD_LEAD:
             return True
-        return i > 0 and text[i - 1] in WORD_GOOD_TAIL and text[i] not in WORD_GOOD_TAIL_BLOCKERS
+        return (
+            i > 0
+            and text[i - 1] in WORD_GOOD_TAIL
+            and text[i] not in WORD_GOOD_TAIL_BLOCKERS
+            and SubtitleSegmenter._is_safe_cut_position(text, i)
+        )
 
     @classmethod
     def _word_safe_split(cls, text: str, lo: int, hi: int, min_head: int = 1, tail_min: int = 0) -> int:
@@ -508,6 +738,7 @@ class SubtitleSegmenter:
                 i < len(text)
                 and text[i] not in WORD_BAD_FOLLOWERS
                 and (i == 0 or not text[i - 1].isdigit())
+                and cls._is_safe_cut_position(text, i)
                 and not cls._protected_phrase_span_at_boundary(text, i)
             ):
                 return i
@@ -619,31 +850,71 @@ class SubtitleSegmenter:
         out: List[str] = []
         for b in blocks:
             while len(b) > self.max_chars:
-                pos = self._apply_enumeration_shift(b, self._find_split_pos(b))
-                pos = self._safe_cut_position(b, pos)
-                if any(phrase == b for phrase in WORD_NO_CUT_PHRASES):
+                phrase_at_start = self._protected_phrase_starting_at(b)
+                if phrase_at_start and len(phrase_at_start) > self.max_chars:
+                    # 显式短语是原子单元，允许它单独超过 max；后续文本继续处理。
+                    out.append(phrase_at_start)
+                    b = b[len(phrase_at_start) :]
+                    continue
+                requested_pos = self._apply_enumeration_shift(b, self._find_split_pos(b))
+                pos = (
+                    self._find_safe_cut_position(
+                        b,
+                        requested_pos,
+                        1,
+                        min(self.max_chars, len(b) - 1),
+                    )
+                    if requested_pos > 0
+                    else -1
+                )
+                if phrase_at_start and len(phrase_at_start) == len(b):
                     # 保护短语本身可能比 max_chars 更长；完整短语优先于违反长度上限。
                     out.append(b)
                     b = ""
                     break
                 if pos <= 0 or pos >= len(b):
-                    pos = self.max_chars
-                # 固定长度兜底后再次检查，避免兜底切点落回受保护短语内部。
-                pos = self._safe_cut_position(b, pos)
-                if pos <= 0 or pos >= len(b):
-                    pos = min(self.max_chars, len(b) - 1)
+                    fixed_pos = min(self.max_chars, len(b) - 1)
+                    pos = self._find_safe_cut_position(b, fixed_pos, 1, fixed_pos)
+                    if pos <= 0 or pos >= len(b):
+                        # 当前长度区间没有合法边界时，扩大搜索；仍无边界则整体保留。
+                        pos = self._find_safe_cut_position(b, fixed_pos, 1, len(b) - 1)
+                        if pos <= 0 or pos >= len(b):
+                            out.append(b)
+                            b = ""
+                            break
                 # 平衡约束：尾块 < min_chars 时前移切分点（v1.2：词边界感知 + 越界修复）
                 if len(b) - pos < self.min_chars:
                     min_pos = max(1, len(b) - self.min_chars)
-                    hi = len(b) - 1
+                    hi = min(len(b) - 1, self.max_chars)
+                    bounded_min_pos = min(min_pos, hi)
                     ws = self._word_safe_split(b, min_pos, hi, min_head=min_pos, tail_min=self.min_chars)
                     if ws > 0 and ws < len(b):
-                        pos = self._safe_cut_position(b, ws)
+                        pos = self._find_safe_cut_position(b, ws, bounded_min_pos, hi)
                     else:
                         # 越界修复：balanced == len(b)（尾字符恰为标点时 i+1 越界）视为无效
                         balanced = self._find_split_pos_in_range(b, min_pos, hi)
-                        pos = balanced if 0 < balanced < len(b) else min_pos
-                        pos = self._safe_cut_position(b, pos)
+                        pos = (
+                            self._find_safe_cut_position(b, balanced, bounded_min_pos, hi)
+                            if 0 < balanced < len(b)
+                            else -1
+                        )
+                        balanced_pos = (
+                            pos
+                            if 0 < pos < len(b)
+                            else self._find_safe_cut_position(
+                                b,
+                                bounded_min_pos,
+                                bounded_min_pos,
+                                hi,
+                            )
+                        )
+                        if 0 < balanced_pos < len(b):
+                            pos = balanced_pos
+                if pos <= 0 or pos >= len(b):
+                    # 不能为了满足 max 而绕过显式短语、了后宾语或小数边界守卫。
+                    out.append(b)
+                    b = ""
+                    break
                 out.append(b[:pos])
                 b = b[pos:]
             if b:
@@ -686,14 +957,12 @@ class SubtitleSegmenter:
                 return eend
         return pos
 
-    @staticmethod
-    def _find_split_pos_in_range(text: str, lo: int, hi: int) -> int:
+    @classmethod
+    def _find_split_pos_in_range(cls, text: str, lo: int, hi: int) -> int:
         """在 [lo, hi] 范围内从后往前找最近优先级标点/空格（返回切后索引；无则 -1）。"""
         for i in range(hi, lo - 1, -1):
             if text[i] in PRIORITY_PUNCT:
-                if text[i] == "." and (
-                    (i > 0 and text[i - 1].isdigit()) or (i + 1 < len(text) and text[i + 1].isdigit())
-                ):
+                if text[i] == "." and cls._is_decimal_point_at(text, i):
                     continue  # v1.2.3：数字中的小数点不是切分锚点
                 return i + 1
         for i in range(hi, lo - 1, -1):
