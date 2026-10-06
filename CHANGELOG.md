@@ -1,3 +1,120 @@
+## [0.17.0] - 2026-10-05
+
+> 本节汇总此前未记录于 CHANGELOG 的字幕边界修复（2026-08-16 ~ 2026-08-23，含 PR #21~#24）、
+> 质量门禁接入（2026-10-05），并补齐跨实现差分语料覆盖。
+> 规则机制按提交切分：v1.2.3 的成词保护/小数点豁免/good_tail_blockers 源自 d9d2260（bigram 级），
+> 「任意长度短语 + 前缀延迟切分」是 414aab5 在其之上的推广。
+
+### 🔧 fix(scene-subtitle): 词边界成词保护 / 小数点豁免 / good_tail_blockers（d9d2260，v1.2.2 + v1.2.3 机制来源）
+
+- **根因**：v1.2 的词边界保护只覆盖连词/助词字符集，遇到常见成词对、数字中的小数点、
+  纯黏着后缀作块首三类情况仍会劈词。
+- **修复**：
+  - **成词保护（bigram 级）**：新建 `no_cut_bigrams`，首批 29 词禁止切开
+    （`能|够`、`就|是`、`做|成`、`在|上`、`一架` 等）；
+  - **小数点豁免**：新增 `_is_number_dot`（末两字符为「数字 + 半角点」即判为数字内部），
+    在 Step 1 `_split_sentences` 的句界判定处放行（修复 `13.3毫米` 被劈成 `713.` + `3毫米`）；
+  - **good_tail_blockers（v1.2.2）**：新建该键，初始值 `性`——`good_tail` 路径的块首排除集
+    独立于 `bad_followers`，只拦纯黏着后缀，避免误伤 `的|电视…`、`是|这位…` 等好切点（修复 `个|性` 劈词）；
+  - **孤悬 4 字尾回退 + tail_min 软约束（v1.2.2 让字）**：区间内无标点时向 `lo` 左侧找不劈词的好切点
+    （修复 `…从文化认|同滑向…`）。
+  - `bad_followers` 同步扩充。
+- **规模**：`subtitle_rules.json` 整表重写（190 增 / 158 删）、`subtitle_segmenter.py` 82 增 / 11 删、
+  `test_scene_subtitle.py` 新增 56 行。
+- **回归**：`TestSubtitleV123WordAwareRegression` 下 7 个测试——`test_no_cut_bigrams_word_intact`、
+  `test_user_complaint_words_intact`、`test_user_acceptance_4_blocks`、`test_wendi_sentence_3_blocks`、
+  `test_decimal_dot_not_split`、`test_good_tail_blocker_personality`、`test_enumeration_and_neck`。
+- **注**：本提交的成词保护是 **2 字 bigram 级**；推广为任意长度短语并加入前缀延迟切分的是下面的 414aab5。
+  该提交正文把小数点豁免记为「三处」，但代码中仅 Step 1 一处调用；补齐到四处（Step 1/3、
+  `_find_split_pos`、`_find_split_pos_in_range`）是 PR #24 做的，见下文。
+
+### 🔧 fix(scene-subtitle): 保护短语任意长度 + 前缀延迟切分（414aab5）
+
+- **现象**：受保护短语在流式累积场景仍被切断——切点只比对"已累积文本是否以完整短语结尾"，
+  累积到短语前缀中间（如 `蒙`）时无法识别 → 切点落在短语内部。
+- **修复**：把 d9d2260 的 bigram 级成词保护推广为**任意长度短语**——新增 `WORD_NO_CUT_PHRASES`
+  与 `_protected_phrase_span_at_boundary`（切点落在短语内部即回退）、`_safe_cut_position` 统一裁决；
+  新增 `_protected_phrase_prefix_at_end`：流式累积时若已累积文本以某受保护短语的前缀结尾，
+  切点回退到该短语起点（延迟切分）→ 前缀成词前不落刀。
+- **规则**：`no_cut_bigrams` 语义由 2 字 bigram 扩为任意长度短语（字段名保留作兼容）；
+  增补 `蒙古`/`江南`/`包税人`/`大汗`（`一架` 为 d9d2260 已有，本提交仅补了尾逗号）。
+- **向量**：新增 `user_mongol_tax_collectors`、`protected_phrase_overrides_max`
+  （min=1 / max=1 极端配置，锁定"短语完整性优先于 max_chars"）。
+
+### 🔧 fix(subtitle): 语义引导短语切分（765b216）
+
+- **修复**：引入 `semantic_lead` / `semantic_lead_followers` 两组规则与 `_is_semantic_lead_at`——
+  语义引导字需满足自身词组后续约束（`提` 只在 `提前` 中生效），避免"提"被当通用连词放开切点；
+  接入 `_is_good_cut`（好切点直返）、`_word_safe_split`（引导字直接成点），并在
+  Step 3 `_length_split` 的硬切平衡让字与 Step 4 `_merge_short` 两处加守卫
+  （块首为语义引导字时，该短块不回吸到前块）。
+- **规则**：`good_lead` 增补 `且成`；`semantic_lead` 初始为 `提还把绝`、`semantic_lead_followers`
+  初始为 `{提: 前}`；`no_cut_bigrams` 增补 `绝对`。
+- **向量**：新增 `user_semantic_pacing`、`user_full_mongol_landlord_script`；
+  新增 `test_mongol_tax_collectors_semantic_boundaries`（锁定 `摇身一变｜成了` 语义边界）。
+
+### 🔧 fix(scene-subtitle): 常见词边界 + 落单引号体（PR #21）
+
+- **修复**：常见词组纳入免切短语（避免 `他们`/`没法`/`这种` 一类被拆）；
+  引号体处理改为对称性判定（`_is_likely_symmetric_opening` / `_is_likely_symmetric_closing` /
+  `_has_usable_quote_close`），落单引号只剥离引号符号、**保留引号内正文**，
+  不再把整段正文一起删掉。
+- **规则**：`no_cut_bigrams` 增补 15 项：`他们`/`这群人`/`展现出`/`哪怕`/`没法`/`那些`/
+  `展现`/`这种`/`以为`/`负担`/`小作文`/`写小作文`/`考官`/`南宋灭亡时`/`想当`。
+- **向量**：新增 `user_common_words_and_unpaired_quote`、`user_full_ming_scholar_script`；
+  新增 `test_common_words_and_unpaired_quote_body_intact`。
+
+### 🔧 fix(scene-subtitle): 已经 / 依然 作为语义引导切点（PR #22）
+
+- **修复**：`已经`/`依然` 归入 `semantic_lead`，并补 follower 约束，防止"已/依"被单字放开。
+- **规则**：`semantic_lead` 由 `提还把绝` 扩为 `提还把绝已依`；`semantic_lead_followers`
+  增补 `已→经`、`依→然`。
+- **向量**：新增 `user_adverb_semantic_lead`。
+
+### 🔧 fix(scene-subtitle): 惯用 / 历史词组免硬切（PR #23）
+
+- **修复**：`性志形亡人` 列入 `good_tail_blockers`——这些纯黏着后缀作块首时不再被 `good_tail`
+  路径当成合法切点（消除 `扶余|国`、`电|视剧` 一类劈词的残留入口）。
+- **规则**：`good_tail_blockers` 由 `性` 扩为 `性志形亡人`（该键由 d9d2260 建立，初值 `性`）；
+  `bad_followers` 增补 `亡志形人`；
+  `no_cut_bigrams` 增补 `关羽`/`三国志`/`地形`/`杀了人` 等历史与惯用词组。
+- **向量**：新增 `user_guan_yu_phrase_boundaries`。
+
+### 🔧 fix(subtitle): 安全词边界 oracle 兜底（PR #24）
+
+- **根因**：词边界判定此前要么纯规则（漏切），要么直接依赖 jieba（jieba 异常即整体失败 / 抖动）。
+- **修复**：把分词结果降级为**软 oracle**——`_segmenter_spans` + `_is_soft_word_boundary`
+  只用于候选切点的 tie-break 排序，标点与规则切点仍具权威性（保证双实现可复现）；
+  jieba 不可用时自动回退纯规则边界。配套新增 `_is_safe_cut_position` /
+  `_find_safe_cut_position` 统一安全切点裁决，新增 `_is_le_boundary_allowed` 约束"了"后不切；
+  小数点判定由 d9d2260 的 `_is_number_dot`（仅看末两字符、仅 Step 1 一处调用）升级为
+  `_is_decimal_token` / `_is_decimal_point_at`（真正解析整数+小数两段），
+  并补齐到四处落点：Step 1 `_split_sentences`、Step 3 `_length_split`、
+  `_find_split_pos`、`_find_split_pos_in_range`。
+- **规则**：新增 `oracle_max_token_length`（=8）、`cut_after_le_allow` 两组键。
+- **测试**：新增 `test_jieba_runtime_failure_falls_back_to_rule_boundaries`（monkeypatch
+  `jieba.cut` 抛异常，断言回退规则边界仍稳定输出）。
+
+### 🔋 chore(gate): 接入质量节拍 CCG 质量门禁（PR #25）
+
+- 新增 `scripts/ccg-gate.js`（`verify-change` / `verify-security` / `verify-quality` 三道门禁，
+  `SKIP_CCG_GATE=1` 可临时跳过）、`scripts/ccg-gate-hook.sh`、`scripts/install-ccg-gate-hook.sh`。
+
+### 🧪 chore(parity): 跨实现差分语料补齐新规则覆盖
+
+- **缺口**：`scripts/cross-parity/corpus.json` 长期只覆盖 34 条共享向量中的 19 条，
+  PR #21~#24 引入的 `semantic_lead`、`no_cut_bigrams` 扩词、`oracle_max_token_length`、
+  `cut_after_le_allow`、`good_tail_blockers` 全部在差分盲区——违反
+  `scripts/cross-parity/README.md` 的维护纪律「新增/修改分割规则时，必须同步扩充
+  `corpus.json` 并重跑差分」。
+- **修复**：语料补入 14 条（13 条 `user_*` 用户坏例 + `protected_phrase_overrides_max`），
+  38 → 52 例。`rounding_half_up` 向量与既有探针 `probe_prop_1of16` 文本+有效配置完全相同，
+  未重复引入；该向量仍是唯一未进差分的共享向量（其行为由 `probe_prop_*` 时间戳探针覆盖）。
+- **验证**：Python × Multi-Publish TypeScript 差分 52/52 一致，blocks 与时间戳零差异，
+  `compare.py` 退出码 0；双份 `subtitle-rules.json` 逐键核对（`word_split` 全键、
+  `no_cut_bigrams` 53 项、`semantic_lead*`、`oracle_max_token_length`）一致。
+- **验证（splitter）**：全量 537 passed / 9 skipped；向量 34 条 × 4 断言 = 136 passed。
+
 ## [0.16.0] - 2026-08-15
 
 ### 🐛 fix(subtitle): 词边界感知切分（v1.2，修复扶余|国/电|视剧/复|杂 等坏切）

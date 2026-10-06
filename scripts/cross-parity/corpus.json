@@ -171,6 +171,132 @@
   }
  },
  {
+  "id": "vector_user_myth_overtones",
+  "text": "故事里充满了神话色彩。卵生、日影受孕、鱼鳖搭桥，但剥去这些奇幻的外壳，内核却无比清晰。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_buyeo_kingdom",
+  "text": "因此，在韩国的历史教科书里，能看到大量关于扶余国和扶余人的记载。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_jumong_drama",
+  "text": "2005年，韩国收视率最高的电视剧《朱蒙》播出，里面讲述的正是这位扶余王子的故事。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_blank_plain",
+  "text": "西周人对东北的了解本就模糊，连分封在河北的燕国早期历史都空白一片，更不要说辽西以东的虚实。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_complex_simplify",
+  "text": "历史上的族群迁徙与政权更迭本就复杂，而民族叙事则倾向于把一切复杂简单化、直线化。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_sounds_mixed",
+  "text": "枪声、爆炸声、呐喊声混成一锅滚烫的粥。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_mongol_tax_collectors",
+  "text": "那时候蒙古统治者水平有限，对汉地的管理极其粗放，江南士绅摇身一变成了蒙元的包税人。大汗把权力一下放，收税成本蹭蹭往下降。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_protected_phrase_overrides_max",
+  "text": "蒙古江南包税人大汗",
+  "config": {
+   "min_chars_per_block": 1,
+   "max_chars_per_block": 1,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_semantic_pacing",
+  "text": "其实是跟南宋的老爷们提前谈妥了。之前蒙哥非要死磕，还搞屠城，吓得这些老爷们拼死抵抗。汉族地主阶级最爽的日子绝对是元朝。他们甚至嚣张到把大量蒙古人都卖去当奴隶。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_full_mongol_landlord_script",
+  "text": "忽必烈能够顺利拿下南宋，其实是跟南宋的老爷们提前谈妥了。之前蒙哥非要死磕，还搞屠城，吓得这些老爷们拼死抵抗。后来忽必烈给出优厚条件。南宋的士大夫们，本来就对贾似道的公田法一肚子怨气，索性直接投了元朝。在元朝他们日子过得更舒坦，朝廷不管地方死活。靠着包衣制，他们家族世世代代都能稳坐老爷的位置。说起江南士绅这副德行，说到底还是蒙元给惯出来的。那时候蒙古统治者水平有限，对汉地的管理极其粗放，江南士绅摇身一变成了蒙元的包税人。大汗把权力一下放，收税成本蹭蹭往下降。士绅们只要交够蒙古人的份额，剩下的全进自己腰包，利益太大了能不卖力吗？双方合作得那叫一个亲密，硬生生让蒙元成了古代中国最\"尊儒\"的王朝。汉族地主阶级最爽的日子绝对是元朝。只要给朝廷交够数，你在地方上想干嘛干嘛，元朝根本不管。他们甚至嚣张到把大量蒙古人都卖去当奴隶，家里的姬妾多得必须用阉人来伺候管理。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_common_words_and_unpaired_quote",
+  "text": "这种士大夫做大的局面，哪怕朱元璋建立大明也没能彻底翻转。暂时没法彻底打破士绅垄断。只是这里的\"宽\"被那些狼心狗肺的人硬说成是\"宽仁\"。那些人用实际行动展现出结果。居然还写诗怀念前朝。\"字里行间全在抱怨元末的群雄挡了他给蒙元当奴才的路。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_full_ming_scholar_script",
+  "text": "这种士大夫做大的局面，哪怕朱元璋建立大明也没能彻底翻转。老朱建国后，之所以对平江地区的士绅下死手，疯狂没收土地充公。表面上看，是因为这帮人在元末站队张士诚，跟老朱作对。但核心原因，其实是老朱暂时没法彻底打破士绅对基层的赋税垄断。干脆用最直接的办法，自己上手抢地，把收税权死死攥在手里。大明其实继承了元制，而元制又是从金制来的。宋朝那套制度并没传下来。宋朝的税收制度在古代那是独一档的强，直到清末才被超越。元代的地方管理和税收简直是一团乱麻。明初虽然加强了管控，但也只是治标不治本。等强势的皇帝一走，立马原形毕露。前期朱元璋、朱棣还能镇得住场子，后面的皇帝就压不住了，最后搞出个土木堡之变。明太祖朱元璋曾说过，\"元以宽失天下，朕救之以猛，小人但喜宽\"。只是这里的\"宽\"被那些狼心狗肺的人硬说成是\"宽仁\"。真正是什么意思呢？元朝搞的就是\"小政府\"模式，给蒙古人和色目人特权，玩包税制。只要你给朝廷交够钱，元儒们在地方上怎么横征暴敛，朝廷睁一只眼闭一只眼。这种\"宽\"，那些\"小人\"能不喜欢吗？说白了，就算明太祖光复了汉家天下，那帮汉人大儒领着大明的俸禄，私下里依然抱团取暖，以元儒自居。甚至用实际行动展现出什么叫\"人心皆思圣元\"。在宋濂修的《元史》里，在自家编的史书里，开国皇帝都被描述成曾经的贼寇。像宋濂这样的元儒，在明初可以说是满朝都是。比如杨基，他洪武六年都当上兵部员外郎了，居然还写诗怀念前朝。\"字里行间全在抱怨元末的群雄挡了他给蒙元当奴才的路。还有大名鼎鼎的刘基刘伯温。到了至正十六年，元朝眼看就要凉了，他还在写诗感慨\"传语疲氓聊忍待，王师早晚日边来\"。难怪钱穆要嘲讽他们这群人是孤臣孽子，每饭不忘者。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_adverb_semantic_lead",
+  "text": "底层农民的实际负担依然重得吓人。这举动说明老朱的态度已经变软了。换前几年早开杀戒了。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
+  "id": "vector_user_guan_yu_phrase_boundaries",
+  "text": "关羽是河东杀了人跑路到涿郡的通缉犯。为什么被删，我们就得看看三国志作者陈寿。从扎营、搞粮草、看地形，到变阵型。",
+  "config": {
+   "min_chars_per_block": 8,
+   "max_chars_per_block": 15,
+   "time_calculation_method": "proportional"
+  }
+ },
+ {
   "id": "probe_prop_1of16",
   "text": "嗯。一二三四五六七八九十甲乙丙丁戊"
  },
