@@ -4,7 +4,9 @@
 「算法统一」的自动化保证：同一语料在 smart-sentence-splitter（Python）与
 Multi-Publish story2video-engine（TypeScript）上输出**逐字/逐字段一致**（blocks + starts + durs）。
 
-当前语料：`corpus.json`（38 例 = 20 个共享向量 + 边界/舍入探针，含 .xx5 half-up 舍入锁定）。
+当前语料：`corpus.json`（52 例 = 33 个共享向量 + 19 个边界/舍入探针，含 .xx5 half-up 舍入锁定）。
+共享向量共 34 条，未进差分的 1 条是 `rounding_half_up`——其文本与有效配置与探针
+`probe_prop_1of16` 完全相同，行为已由 `probe_prop_*` 时间戳探针覆盖，故不重复引入。
 
 ## 运行
 
