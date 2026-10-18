@@ -748,14 +748,6 @@ class SubtitleSegmenter:
             # 避免在“成了”前形成 6 字头块。
             if is_semantic_lead and i < max(1, min_head - 1):
                 continue
-            # v1.3：短语边界允许头块放宽到 phrase_min_head（如 "去理解那段历史|对今天…" 7+8）。
-            is_phrase_boundary_cut = _is_phrase_boundary(text, i)
-            if is_phrase_boundary_cut and i >= max(1, min_head - PHRASE_BOUNDARY_MIN_HEAD_RELAX):
-                if tail > 3 and (tail_min == 0 or tail >= tail_min or tail >= 5):
-                    return i
-                if tail_fallback < 0:
-                    tail_fallback = i
-                continue
             # “成了”是谓语起点，但不接受欠长头块；否则“硬生生让蒙元｜成了…”会只剩 6 字。
             if text[i] == "成" and i < min_head:
                 continue
