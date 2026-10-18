@@ -132,6 +132,29 @@ WORD_ORACLE_MAX_TOKEN_LENGTH = int(_RULES["word_split"].get("oracle_max_token_le
 # v1.2.3：成词保护（兼容字段名 no_cut_bigrams）——项目可以是任意长度短语，
 # 切点不得落在任一短语内部（如 "蒙古"、"江南"、"包税人"）。
 WORD_NO_CUT_PHRASES = set(_RULES["word_split"].get("no_cut_bigrams", []))
+# v1.3 短语边界：显式成对短语表（phrase_boundary.pairs）。
+# 块以某短语结尾、且紧随其后的字符命中该短语登记的后续首字时，构成短语右边界。
+# 用成对登记而非单侧字符集，避免把 "某|些"、"票仓的|无奈" 这类假边界放进来。
+PHRASE_BOUNDARY_PAIRS = [
+    (left, next_) for left, next_ in _RULES["word_split"].get("phrase_boundary", {}).get("pairs", [])
+]
+# v1.3：短语边界路径允许头块放宽到 min_chars - relax（与既有 tailMin 软约束对齐）。
+PHRASE_BOUNDARY_MIN_HEAD_RELAX = int(_RULES["word_split"].get("phrase_boundary", {}).get("min_head_relax", 0))
+
+
+def _is_phrase_boundary(text: str, i: int) -> bool:
+    """v1.3 短语边界：切点落在某显式短语对的右端，且下一字符命中登记的后续首字。"""
+    if i <= 0 or i >= len(text):
+        return False
+    for left, next_ in PHRASE_BOUNDARY_PAIRS:
+        if i < len(left):
+            continue
+        if text[i - len(left) : i] != left:
+            continue
+        if next_ and text[i] not in next_:
+            continue
+        return True
+    return False
 
 
 def _is_semantic_lead_at(text: str, index: int) -> bool:
@@ -382,6 +405,17 @@ class SubtitleSegmenter:
                 and len(cur) >= self.min_chars
                 and not (ch == "." and self._is_decimal_point_at(text, source_index))
             ):
+                blocks.append(cur)
+                cur = ""
+                last_hard_cut = False
+            elif (
+                not stack
+                and len(cur) >= max(1, self.min_chars - PHRASE_BOUNDARY_MIN_HEAD_RELAX)
+                and _is_phrase_boundary(text, source_index + 1)
+            ):
+                # v1.3 短语边界提前切分：短语右边界与标点等价，在累积阶段就兑现，
+                # 不等 MAX 分支的裸切兜底（那里窗口已错过最佳切点）。
+                # 头块允许放宽到 min_chars - relax；尾块至少留 1 字，由后续 merge/enforce 补齐。
                 blocks.append(cur)
                 cur = ""
                 last_hard_cut = False
@@ -677,6 +711,9 @@ class SubtitleSegmenter:
         if _is_semantic_lead_at(text, i):
             return True
         if text[i] in WORD_GOOD_LEAD:
+            return True
+        # v1.3：短语右边界（显式成对短语表命中）。
+        if _is_phrase_boundary(text, i):
             return True
         return (
             i > 0
