@@ -1,3 +1,41 @@
+## [0.18.0] - 2026-10-18
+
+### 🐛 fix(subtitle): 短语边界感知切分（v1.3，修复 拉拢某|些 / 宏大的地|缘政治 / 说出了那|句 等 11 处坏切）
+
+- **动因**：Multi-Publish 用户反馈（项目 `mvdnrqvc_b77q`）「字幕层分句结果不理想，有很多不合理的断句位置」。
+  取证确认走的是本引擎（`subtitleSource=smart-sentence-splitter`、`degraded=false`、14/14 场景采纳、0 回退），
+  **坏切是引擎算法本身的输出**，与降级无关。
+- **根因（插桩 `_word_safe_split` / `_is_good_cut` / `_length_split` MAX 分支定位）**：
+  1. `_is_good_cut` 只有三类判据（`semantic_lead` 提/把/还/绝/已/依、`good_lead` 和与及而但或把被从向对为于并且且成、
+     `good_tail` 的得了是就都也还要会能可将则若虽因着过地得正于），覆盖不到中文动词/名词短语的自然右边界
+     （如「为了｜拉拢」「宏大的｜地缘」「那段历史｜对今天」）；
+  2. `len == max(15)` 且 `min_head == min(8)` 时合法窗口 `i ∈ [8, 7]` 为**空集**，
+     即不是「判据严」而是「窗口里没有候选」⇒ 返回 -1；
+  3. 下游 `_find_safe_cut_position` 只校验「安全」（不劈保护短语/代理对/小数点）、**不校验语义**，
+     于是退化成算术位置裸切。
+- **为什么不用分词边界**：实测 jieba 与 segmentit 在同一文案上 **8/8 行分词跨度全部不一致**，
+  且 Multi-Publish 的 `segmenterSpans` 贪心对齐在连续中文上会丢边界。把分词边界升成跨实现硬判据
+  会直接破坏「三端逐字一致」的既有契约 ⇒ 修复必须走字符规则可判定路径。
+- **修复**：
+  - `subtitle_rules.json` `word_split` 新增 `phrase_boundary` 段：`pairs` 显式成对短语表
+    `[[left, next], ...]`（块以 `left` 逐字结尾且下一字符命中 `next` 才构成短语右边界）
+    + `min_head_relax: 2`。**用成对登记而非单侧字符集**——单侧的 `tail`/`head` 交集会产生假边界
+    （`了|拉` 既可能来自「为了拉拢」也可能来自「完成了拉车」），成对登记把假阳性从集合交集降到显式枚举。
+  - 新增 `_is_phrase_boundary(text, i)`；
+  - `_length_split` 新增短语边界提前切分分支（短语右边界与优先级标点**等价**，
+    在累积阶段就兑现，不等 MAX 分支兜底——那里合法窗口已错过最佳切点）；
+  - `_is_good_cut` 接入短语边界作为第四类好切点（排序在 `semantic_lead`/`good_lead` 之后、`good_tail` 之前）；
+  - `_word_safe_split` 新增短语分支 + 头块放宽到 `min_head - PHRASE_BOUNDARY_MIN_HEAD_RELAX`。
+- **向后兼容**：规则表缺省 `phrase_boundary` 段时 `pairs=[]`、`relax=0`，行为与 v1.2 完全一致。
+- **向量**：新增 10 条 `v1.3_phrase_boundary_*`（`dian_ju`/`hong_da`/`wai_jiao`/`zai_ye`/`ri_chang`/
+  `li_suo_dang_ran`/`li_jie`/`qing_piao_piao`/`wen_ji`/`qing_miao`），`expected_blocks` 为人工评审确认的
+  手工真值，每条 `< min_chars` 块在 `short_block_exceptions` 显式声明 reason。
+- **验证**：本仓 `pytest tests/` **577 passed, 9 skipped**（含向量子集 176）；Multi-Publish 侧
+  TS 216 / JS 向量+parity+segmentation 168 全绿；真实 8002 链路 E2E 实测 99 块、11 处坏切全部修复、0 回归。
+- **踩坑（写下来免得再犯）**：本包是 `pip install -e .`，editable install 指向**原仓库**而非 worktree。
+  在隔离 worktree 里跑测试必须 `PYTHONPATH=<worktree>/src` 前置，否则测的是旧代码——
+  而且它会**全绿地骗人**（我第一轮 176 个用例全过，其实改动一行没生效）。
+
 ## [0.16.0] - 2026-08-15
 
 ### 🐛 fix(subtitle): 词边界感知切分（v1.2，修复扶余|国/电|视剧/复|杂 等坏切）
