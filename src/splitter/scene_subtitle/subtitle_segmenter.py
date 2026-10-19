@@ -405,9 +405,13 @@ class SubtitleSegmenter:
                 and len(cur) >= self.min_chars
                 and not (ch == "." and self._is_decimal_point_at(text, source_index))
             ):
-                blocks.append(cur)
-                cur = ""
-                last_hard_cut = False
+                # v1.4 unit_guard：标点切点同样不得落在 数字│单位 或 引导字│数字 之间
+                if self._is_unit_interior(text, source_index + 1):
+                    pass  # 不在此切；落入后续短语边界/MAX 分支处理
+                else:
+                    blocks.append(cur)
+                    cur = ""
+                    last_hard_cut = False
             elif (
                 not stack
                 and len(cur) >= max(1, self.min_chars - PHRASE_BOUNDARY_MIN_HEAD_RELAX)
@@ -655,7 +659,50 @@ class SubtitleSegmenter:
             return False
         if not cls._is_le_boundary_allowed(text, i):
             return False
+        if cls._is_unit_interior(text, i):
+            return False
         return not cls._is_decimal_interior(text, i)
+
+    # v1.4 unit_guard：与 TS isUnitInterior 同构（design §2.1）。
+    _UNIT_GUARD_UNITS: list = list(_RULES["word_split"].get("unit_guard", {}).get("units", []))
+    _UNIT_LEADERS = "是约到达了超足低高等"
+    _CN_NUMERAL_CHARS = "一二三四五六七八九十百千万亿兆两零〇"
+
+    @classmethod
+    def _match_unit_prefix(cls, s: str) -> str:
+        """units 最长优先前缀匹配；无命中返回空串。"""
+        for u in cls._UNIT_GUARD_UNITS:
+            if u and s.startswith(u):
+                return u
+        return ""
+
+    @classmethod
+    def _is_unit_interior(cls, text: str, i: int) -> bool:
+        """数字与量词/单位之间不得设切点。left_bind：数字串（可尾随一个空格）│单位；
+        right_bind：引导字（跳过空白/标点后取首个非空白字符）│ASCII 数字，中间无汉字。"""
+        if i <= 0 or i >= len(text):
+            return False
+
+        def _is_num_ch(ch: str) -> bool:
+            return bool(ch) and (ch in "0123456789." or ch in cls._CN_NUMERAL_CHARS)
+
+        left = text[max(0, i - 8): i]
+        right = text[i: i + 8]
+        left_trim = left[:-1] if left.endswith(" ") else left
+        if left_trim and _is_num_ch(left_trim[-1]) and cls._match_unit_prefix(right):
+            return True
+        j = i - 1
+        while j >= 0 and (text[j].isspace() or text[j] in "，。！？；：、,.!?;:"):
+            j -= 1
+        if j < 0:
+            return False
+        if text[j] not in cls._UNIT_LEADERS:
+            return False
+        if not right or right[0] not in "0123456789":
+            return False
+        if j + 1 < i and "\u4e00" <= text[j + 1] <= "\u9fff":
+            return False
+        return True
 
     @classmethod
     def _find_safe_cut_position(cls, text: str, preferred: int, lo: int = 1, hi: int | None = None) -> int:
