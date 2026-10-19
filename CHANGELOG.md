@@ -1,3 +1,20 @@
+## [未发布] feat(parity): 跨仓规则表/向量对账锁 + Python 金标生成器（sidecar-parity-lock）
+
+### ✨ feat(parity): 与 Multi-Publish 共享的数据第一次有了机械一致性判据
+
+- **动因**：`subtitle-rules.json` 与 `subtitle_segmentation_vectors.json` 在两个仓库各存一份**手工副本**，两仓单测各读自己那份、各自全绿；而线上 8002 跑本仓副本、桌面端降级路径跑 Multi-Publish 副本，两者只在本服务不可用那一刻才会同时出现在同一条链路上。现场证据：`no_cut_bigrams` 尾部 9 个元素的顺序已经漂了（集合相同，故行为未变——这恰好说明「会漂，且没有任何东西会拦」）。
+- **`tests/vectors/sidecar-parity.lock.json`**：与 Multi-Publish 仓**逐字节相同**，登记规则表与共享向量的 **LF 归一化 sha256**。`tests/unit/test_sidecar_parity_lock.py`（4 例）断言本仓文件匹配登记值；任何一边改了数据却没同步锁，本仓当场变红。
+- **口径取「字节哈希 + 只抹平 CRLF」**：不取 JSON 语义比较（放过键序/缩进/行尾），也不各语言自做 canonical JSON（`json.dumps(sort_keys=True)` 与 `JSON.stringify` 在浮点、转义、非 ASCII 上不同 ⇒ 等于在判据里埋一个自己会漂的组件）。代价是任何格式差异都会红，这是有意的：跨语言场景下「格式不同但语义相同」就是漂移温床。
+- **`scripts/gen_subtitle_python_golden.py`**：把本服务的输出固化为金标快照（语料只含输入，期望值全部由本脚本产出），供 Multi-Publish 的 TS 与 Electron JS 实现逐字复现。**它只回答「两边是不是同一份行为」，不定义「这样切对不对」**——后者由共享向量的手工真值界定；三端一起漂时金标不红、手工向量红，二者互补。金标带 provenance（生成时的规则表/向量/语料哈希），数据变了不重生成会被对账判红。
+- **生成器不接受命令行路径参数**：首版写成 `--corpus/--out`，提交时 CCG 安全扫描器把「`Path(` 同行出现 `args`」判为**路径遍历高危并阻断提交**，而它**没有任何抑制机制**。可以靠改名变量躲过那条正则，但那是「为通过判据而改代码」；正解是让脚本只读 `tests/vectors/subtitle_parity_corpus.json`、只写 `tests/vectors/subtitle_python_golden.json`。一个只做「固定输入 → 固定输出」的脚本本来就不需要任意路径能力，去掉参数是缩安全面而不是绕过判据。
+- **金标新鲜度自锁**：`tests/unit/test_sidecar_parity_lock.py` 另断言金标 provenance 的三个哈希与本仓当前规则表/向量/语料一致 —— 本仓这份金标只在对方仓被消费，**它若悄悄过期没有任何单仓判据会发现**（过期金标仍会被复制过去并通过对方测试，只是描述的是旧行为）。
+- **语料与金标是本仓的第 3、4 份跨仓副本**：跨仓是否复制到位由 Multi-Publish 的 `scripts/check-sidecar-parity.js` 比较四份产物兜住；跨仓复制**故意不自动化**，它是唯一需要人判断「这次改动是否该跨仓同步」的节点。
+
+### 🔧 chore(rules): `no_cut_bigrams` 顺序对齐
+
+- 尾部 9 个元素顺序与 Multi-Publish 侧对齐（`展现` 从 `那些` 之后移到 `想当` 之后），使两仓规则表 **LF 归一化后逐字节相同**（`07c14ae28144607402a0d8a8a03220907608eaf625bf49fbd0ac98eb70705d4f`）。
+- **先读实现确认与顺序无关，不是假定**：`WORD_NO_CUT_PHRASES = set(...)`，三处用法分别是「切点是否落在某短语内部」（真值）与「最长匹配」（取最长）⇒ 集合语义，与迭代顺序无关。全量回归 **577 passed, 9 skipped** 佐证。
+
 ## [0.18.0] - 2026-10-18
 
 ### 🐛 fix(subtitle): 短语边界感知切分（v1.3，修复 拉拢某|些 / 宏大的地|缘政治 / 说出了那|句 等 11 处坏切）
