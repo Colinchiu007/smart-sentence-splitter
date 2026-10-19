@@ -686,8 +686,8 @@ class SubtitleSegmenter:
         def _is_num_ch(ch: str) -> bool:
             return bool(ch) and (ch in "0123456789." or ch in cls._CN_NUMERAL_CHARS)
 
-        left = text[max(0, i - 8): i]
-        right = text[i: i + 8]
+        left = text[max(0, i - 8) : i]
+        right = text[i : i + 8]
         left_trim = left[:-1] if left.endswith(" ") else left
         if left_trim and _is_num_ch(left_trim[-1]) and cls._match_unit_prefix(right):
             return True
