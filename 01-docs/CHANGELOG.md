@@ -1,3 +1,25 @@
+## [未发布] docs(tech-debt): 登记两项文档欠账——新 contributor 导览缺失与 AGENTS.md 双份并存
+
+### 背景
+
+清理 `agents-doc-update` 分支（2026-06-27 的无 PR 早期草稿，已被同日 PR #3 的正式版取代）时做了逐项取证：
+它独有的内容在 main 上的承载情况全部核对完毕，没有代码/规则/事实性信息缺失，剩下三块**导览性材料**缺口
+与一个顺带发现的**文档双份**问题。按"不从已删分支捞内容"的原则，此处只登记欠账，不把草稿引进评审流。
+
+### 登记内容
+
+- **TD-006 新 contributor 导览缺三块**：pipeline 9 步序号链图、`02-source/` 路径说明表、安装/启动命令速查
+  （extras / CLI / MCP Server）。结构信息散在 `01-docs/ARCH-001-architecture.md` 与 `01-docs/USAGE_GUIDE.md`，
+  无一张集中导览。取证依据：`02-source` 字样在 main 文档里零命中（仅 `.project-meta.json`）；
+  `pip install -e ".[semantic]"`、`sentence-splitter` CLI、`python -m splitter.api.mcp_server` 三条命令文档未命中。
+- **TD-007 `docs/AGENTS.md` 与 `01-docs/AGENTS.md` 同 blob 双份并存**（各 179 行），疑为 `docs/` → `01-docs/`
+  迁移残留。删任一份前须先改引用——两种路径当前都可达。
+
+### 不在本次范围
+
+- 导览材料的重写（按 main 现有结构重写，而非恢复草稿；草稿指向旧路径假设）
+- `docs/` 与 `01-docs/` 双份的取舍（需先统计外部链接引用）
+
 ## [0.10.0] - 2026-06-30
 
 ### 🚀 v0.10.0 — 大文本分块改进 + SSE 流式分句
